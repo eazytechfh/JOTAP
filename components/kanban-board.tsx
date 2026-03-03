@@ -84,14 +84,28 @@ export function KanbanBoard() {
     filterLeads()
   }, [leads, searchTerm, filterOrigem, filterEstagio])
 
-  const loadLeads = async () => {
-    const user = getCurrentUser()
-    if (user) {
-      const data = await getLeads(user.id_empresa)
+const loadLeads = async () => {
+  const user = getCurrentUser()
+  if (user) {
+    const data = await getLeads(user.id_empresa)
+
+    const isAdmin = user.cargo === "administrador"
+
+    if (isAdmin) {
       setLeads(data)
+    } else {
+      const vendedorNome = (user.nome_usuario || "").trim().toLowerCase()
+
+      const onlyMine = data.filter((lead) => {
+        const leadVendedor = (lead.vendedor || "").trim().toLowerCase()
+        return leadVendedor !== "" && leadVendedor === vendedorNome
+      })
+
+      setLeads(onlyMine)
     }
-    setLoading(false)
   }
+  setLoading(false)
+}
 
   const filterLeads = () => {
     let filtered = [...leads]

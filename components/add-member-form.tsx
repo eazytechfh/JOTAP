@@ -121,12 +121,17 @@ export function AddMemberForm({ isOpen, onClose, onSuccess, currentUser }: AddMe
 
           <div>
             <Label htmlFor="telefone">Telefone</Label>
-            <Input
-              id="telefone"
-              value={formData.telefone}
-              onChange={(e) => handleChange("telefone", e.target.value)}
-              placeholder="(11) 99999-9999"
-            />
+<Input
+  id="telefone"
+  value={formData.telefone}
+  onChange={(e) =>
+    handleChange(
+      "telefone",
+      e.target.value.replace(/\D/g, "")
+    )
+  }
+  placeholder="5541999999999"
+/>
           </div>
 
           <div>
