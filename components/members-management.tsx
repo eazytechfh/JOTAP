@@ -3,6 +3,8 @@
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import {
@@ -26,12 +28,18 @@ import {
   deleteMember,
   canManageMembers,
 } from "@/lib/auth"
-import { Trash2, Shield, Clock, XCircle, UserIcon, Lock } from "lucide-react"
+import { Trash2, Shield, Clock, XCircle, UserIcon, Lock, Pencil } from "lucide-react"
 
 interface MembersManagementProps {
   members: User[]
   currentUser: User
   onMembersUpdate: () => void
+}
+
+type EditForm = {
+  nome_usuario: string
+  email: string
+  senha: string
 }
 
 export function MembersManagement({ members, currentUser, onMembersUpdate }: MembersManagementProps) {
@@ -40,6 +48,78 @@ export function MembersManagement({ members, currentUser, onMembersUpdate }: Mem
   const [error, setError] = useState("")
 
   const canManage = canManageMembers(currentUser)
+
+  // --- Edição ---
+  const [editMember, setEditMember] = useState<User | null>(null)
+  const [editSaving, setEditSaving] = useState(false)
+  const [editForm, setEditForm] = useState<EditForm>({ nome_usuario: "", email: "", senha: "" })
+
+  const openEdit = (member: User) => {
+    setError("")
+    setEditMember(member)
+    setEditForm({
+      nome_usuario: member.nome_usuario ?? "",
+      email: member.email ?? "",
+      senha: "",
+    })
+  }
+
+  const closeEdit = () => {
+    if (editSaving) return
+    setEditMember(null)
+    setEditForm({ nome_usuario: "", email: "", senha: "" })
+  }
+
+  const handleSaveEdit = async () => {
+    if (!editMember) return
+
+    if (!canManage) {
+      setError("Você não tem permissão para editar membros.")
+      return
+    }
+
+    const nome = editForm.nome_usuario.trim()
+    const email = editForm.email.trim()
+    const senha = editForm.senha.trim()
+
+    if (nome.length < 2) {
+      setError("Nome precisa ter pelo menos 2 caracteres.")
+      return
+    }
+    if (!email.includes("@")) {
+      setError("E-mail inválido.")
+      return
+    }
+
+    setError("")
+    setEditSaving(true)
+
+    try {
+      const res = await fetch(`/api/usuarios/${editMember.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nome_usuario: nome,
+          email,
+          ...(senha ? { senha } : {}),
+        }),
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        setError(data?.error || "Erro ao salvar alterações.")
+        return
+      }
+
+      closeEdit()
+      onMembersUpdate()
+    } catch (e) {
+      setError("Erro ao salvar. Tente novamente.")
+    } finally {
+      setEditSaving(false)
+    }
+  }
 
   const handleStatusChange = async (memberId: number, newStatus: "ativo" | "pendente" | "inativo") => {
     if (!canManage) {
@@ -233,6 +313,18 @@ export function MembersManagement({ members, currentUser, onMembersUpdate }: Mem
                   </Button>
                 )}
               </div>
+
+              {/* ✅ Botão Editar (abaixo do "Ativo") */}
+              <Button
+                variant="outline"
+                size="sm"
+                className="min-w-[120px] justify-center"
+                onClick={() => openEdit(member)}
+                disabled={loading === member.id || !canManage}
+              >
+                <Pencil className="h-4 w-4 mr-2" />
+                Editar
+              </Button>
             </div>
           </div>
         ))}
@@ -261,6 +353,61 @@ export function MembersManagement({ members, currentUser, onMembersUpdate }: Mem
               className="bg-red-600 hover:bg-red-700"
             >
               Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ✅ Edit Dialog */}
+      <AlertDialog open={!!editMember} onOpenChange={(open) => (!open ? closeEdit() : null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Editar Membro</AlertDialogTitle>
+            <AlertDialogDescription>
+              Atualize nome, e-mail e senha. (Senha é opcional: só altera se você preencher.)
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-nome">Nome</Label>
+              <Input
+                id="edit-nome"
+                value={editForm.nome_usuario}
+                onChange={(e) => setEditForm((p) => ({ ...p, nome_usuario: e.target.value }))}
+                disabled={editSaving}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-email">E-mail</Label>
+              <Input
+                id="edit-email"
+                value={editForm.email}
+                onChange={(e) => setEditForm((p) => ({ ...p, email: e.target.value }))}
+                disabled={editSaving}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-senha">Senha (opcional)</Label>
+              <Input
+                id="edit-senha"
+                type="password"
+                value={editForm.senha}
+                onChange={(e) => setEditForm((p) => ({ ...p, senha: e.target.value }))}
+                disabled={editSaving}
+                placeholder="Deixe vazio para não alterar"
+              />
+            </div>
+          </div>
+
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={closeEdit} disabled={editSaving}>
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={handleSaveEdit} disabled={editSaving}>
+              {editSaving ? "Salvando..." : "Salvar"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
