@@ -21,14 +21,14 @@ export default function Negociacoes() {
       <SidebarNav />
 
       <div className="flex-1 flex flex-col overflow-hidden lg:ml-0">
-        <main className="flex-1 overflow-hidden bg-gray-50">
-          <div className="container mx-auto flex h-full min-h-0 flex-col px-6 py-8">
+        <main className="flex-1 overflow-y-auto bg-gray-50">
+          <div className="container mx-auto flex min-h-full flex-col px-6 py-8">
             <div className="mb-8">
               <h1 className="text-3xl font-bold text-gray-900 mb-2">Negociações</h1>
               <p className="text-gray-600">Gerencie seus leads através do funil de vendas</p>
             </div>
 
-            <div className="flex-1 min-h-0">
+            <div className="flex-1">
               <KanbanBoard />
             </div>
           </div>

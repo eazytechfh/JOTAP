@@ -120,7 +120,7 @@ function formatRemainingTime(ms: number) {
 }
 
 export function KanbanBoard() {
-  const columnViewportHeight = "calc(100vh - 25rem)"
+  const columnViewportHeight = "64rem"
   const [leads, setLeads] = useState<Lead[]>([])
   const [filteredLeads, setFilteredLeads] = useState<Lead[]>([])
   const [loading, setLoading] = useState(true)
@@ -577,7 +577,7 @@ export function KanbanBoard() {
           <LeadsListView leads={leads} onLeadsUpdate={handleLeadsUpdate} />
         </div>
       ) : (
-        <div className="flex min-h-0 flex-1 flex-col gap-6">
+        <div className="flex flex-1 flex-col gap-6">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -654,15 +654,15 @@ export function KanbanBoard() {
 
           <DragDropContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
             <div
-              className="min-h-0 flex-1 overflow-x-auto overflow-y-hidden pb-2"
-              style={{ maxHeight: columnViewportHeight }}
+              className="overflow-x-auto overflow-y-hidden pb-2"
+              style={{ height: columnViewportHeight, minHeight: columnViewportHeight }}
             >
-              <div className="flex h-full min-h-0 min-w-max gap-4 pb-2">
+              <div className="flex h-full min-w-max gap-4 pb-2">
                 {COLUNAS_KANBAN.map((stage) => (
                   <Droppable key={stage} droppableId={stage}>
                     {(provided, snapshot) => (
                       <Card
-                        className={`flex h-full min-h-0 w-80 flex-shrink-0 flex-col transition-all duration-200 ${
+                        className={`flex h-full w-80 flex-shrink-0 flex-col transition-all duration-200 ${
                           snapshot.isDraggingOver
                             ? "bg-gradient-to-b from-blue-50 to-blue-100 border-blue-300 shadow-lg transform scale-105"
                             : "hover:shadow-md"
@@ -691,7 +691,7 @@ export function KanbanBoard() {
                         <CardContent
                           ref={provided.innerRef}
                           {...provided.droppableProps}
-                          className="kanban-column-scroll flex-1 min-h-0 space-y-2 overflow-y-auto px-4 pb-4 pt-0"
+                          className="kanban-column-scroll flex-1 space-y-2 overflow-y-auto px-4 pb-4 pt-0"
                         >
                           {getLeadsByStage(stage).map((lead, index) => {
                             const countdown = getTransferCountdown(lead)
