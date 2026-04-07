@@ -14,7 +14,6 @@ import {
   getLeads,
   updateLeadStage,
   generateResumoComercial,
-  sendPesquisaAtendimentoWebhook,
   deleteLead,
   type Lead,
   ESTAGIO_LABELS,
@@ -58,9 +57,11 @@ const COLUNAS_KANBAN = [
   "nao_fechou",
   "follow_up",
   "pos_venda",
-]
+] as const
 
-const ESTAGIOS_NEGOCIACOES = [...COLUNAS_KANBAN]
+type NegociacaoStage = (typeof COLUNAS_KANBAN)[number]
+
+const ESTAGIOS_NEGOCIACOES: NegociacaoStage[] = [...COLUNAS_KANBAN]
 const ESTAGIO_LABELS_NEGOCIACOES = {
   oportunidade: "Oportunidade",
   em_qualificacao: "Em Qualificação",
@@ -70,7 +71,11 @@ const ESTAGIO_LABELS_NEGOCIACOES = {
   nao_fechou: "Não Fechou",
   follow_up: "Follow Up",
   pos_venda: "Pós Venda",
-} satisfies Record<string, string>
+} satisfies Record<NegociacaoStage, string>
+
+function isNegociacaoStage(stage: string): stage is NegociacaoStage {
+  return ESTAGIOS_NEGOCIACOES.includes(stage as NegociacaoStage)
+}
 
 const TRANSFER_TIMEOUT_MS = 5 * 60 * 1000
 
@@ -255,7 +260,7 @@ export function KanbanBoard() {
       return
     }
 
-    if (!ESTAGIOS_NEGOCIACOES.includes(newStage)) {
+    if (!isNegociacaoStage(newStage)) {
       setResumoMessage({
         type: "error",
         text: `Estágio inválido: ${newStage}. Recarregue a página e tente novamente.`,
@@ -300,20 +305,6 @@ export function KanbanBoard() {
 
         setTimeout(() => setResumoMessage(null), 5000)
       } else {
-        if (newStage === "pesquisa_atendimento") {
-          try {
-            setResumoMessage({
-              type: "success",
-              text: "Lead movido",
-            })
-
-            await sendPesquisaAtendimentoWebhook(updatedLeadData)
-            setTimeout(() => setResumoMessage(null), 5000)
-          } catch (webhookError) {
-            console.error("[v0] Error sending pesquisa atendimento webhook:", webhookError)
-          }
-        }
-
         await loadLeads()
       }
     } catch (error) {
@@ -493,7 +484,18 @@ export function KanbanBoard() {
 
   const getLeadsByStage = (stage: string) => {
     const normalizedStage = normalizeStage(stage)
-    return filteredLeads.filter((lead) => normalizeStage(lead.estagio_lead) === normalizedStage)
+    const stageLeads = filteredLeads.filter((lead) => normalizeStage(lead.estagio_lead) === normalizedStage)
+
+    if (normalizedStage !== "em_negociacao") {
+      return stageLeads
+    }
+
+    return [...stageLeads].sort((a, b) => {
+      const updatedAtA = parseSupabaseTimestamp(a.updated_at) ?? 0
+      const updatedAtB = parseSupabaseTimestamp(b.updated_at) ?? 0
+
+      return updatedAtB - updatedAtA
+    })
   }
 
   const getStageTotal = (stage: string) => {
