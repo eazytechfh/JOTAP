@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useState, useCallback, useRef } from "react"
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -41,6 +41,7 @@ import {
   Trash2,
   MessageCircle,
   Clock3,
+  ArrowRightLeft,
 } from "lucide-react"
 import { LeadsListView } from "./leads-list-view"
 import { EditableValueField } from "./editable-value-field"
@@ -121,6 +122,9 @@ function formatRemainingTime(ms: number) {
 
 export function KanbanBoard() {
   const columnViewportHeight = "64rem"
+  const kanbanViewportRef = useRef<HTMLDivElement | null>(null)
+  const dragPointerXRef = useRef<number | null>(null)
+  const dragScrollFrameRef = useRef<number | null>(null)
   const [leads, setLeads] = useState<Lead[]>([])
   const [filteredLeads, setFilteredLeads] = useState<Lead[]>([])
   const [loading, setLoading] = useState(true)
@@ -134,6 +138,7 @@ export function KanbanBoard() {
   const [draggedLead, setDraggedLead] = useState<Lead | null>(null)
   const [movingLead, setMovingLead] = useState<number | null>(null)
   const [deletingLead, setDeletingLead] = useState<number | null>(null)
+  const [showMoveStageOptions, setShowMoveStageOptions] = useState(false)
   const [now, setNow] = useState(Date.now())
 
   const loadLeads = useCallback(async () => {
@@ -212,6 +217,58 @@ export function KanbanBoard() {
     return () => clearInterval(interval)
   }, [loadLeads])
 
+  useEffect(() => {
+    if (!draggedLead) {
+      dragPointerXRef.current = null
+
+      if (dragScrollFrameRef.current !== null) {
+        cancelAnimationFrame(dragScrollFrameRef.current)
+        dragScrollFrameRef.current = null
+      }
+
+      return
+    }
+
+    const handlePointerMove = (event: PointerEvent) => {
+      dragPointerXRef.current = event.clientX
+    }
+
+    const autoScroll = () => {
+      const viewport = kanbanViewportRef.current
+      const pointerX = dragPointerXRef.current
+
+      if (viewport && pointerX !== null) {
+        const rect = viewport.getBoundingClientRect()
+        const threshold = 140
+        const maxSpeed = 30
+
+        if (pointerX < rect.left + threshold) {
+          const distance = rect.left + threshold - pointerX
+          const speed = Math.min(maxSpeed, Math.max(8, distance / 4))
+          viewport.scrollLeft -= speed
+        } else if (pointerX > rect.right - threshold) {
+          const distance = pointerX - (rect.right - threshold)
+          const speed = Math.min(maxSpeed, Math.max(8, distance / 4))
+          viewport.scrollLeft += speed
+        }
+      }
+
+      dragScrollFrameRef.current = requestAnimationFrame(autoScroll)
+    }
+
+    window.addEventListener("pointermove", handlePointerMove)
+    dragScrollFrameRef.current = requestAnimationFrame(autoScroll)
+
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove)
+
+      if (dragScrollFrameRef.current !== null) {
+        cancelAnimationFrame(dragScrollFrameRef.current)
+        dragScrollFrameRef.current = null
+      }
+    }
+  }, [draggedLead])
+
   const getTransferCountdown = (lead: Lead) => {
     if (normalizeStage(lead.estagio_lead) !== "transferidos") return null
     if (!lead.transferido_em) return null
@@ -235,6 +292,96 @@ export function KanbanBoard() {
     const lead = leads.find((l) => l.id === leadId)
     setDraggedLead(lead || null)
   }
+
+  const moveLeadToStage = useCallback(
+    async (leadId: number, newStage: NegociacaoStage, successMessage?: string) => {
+      const leadData = leads.find((lead) => lead.id === leadId)
+
+      if (!leadData) {
+        setResumoMessage({
+          type: "error",
+          text: "NÃ£o foi possÃ­vel localizar o lead. Atualize a tela e tente novamente.",
+        })
+        setTimeout(() => setResumoMessage(null), 5000)
+        return false
+      }
+
+      const updatedAt = new Date().toISOString()
+
+      setMovingLead(leadId)
+      setLeads((prevLeads) =>
+        prevLeads.map((lead) => {
+          if (lead.id !== leadId) return lead
+
+          return {
+            ...lead,
+            estagio_lead: newStage,
+            updated_at: updatedAt,
+            transferido_em: newStage === "transferidos" ? updatedAt : lead.transferido_em,
+            transferido_vendedor: newStage === "transferidos" ? lead.vendedor || "" : lead.transferido_vendedor,
+          }
+        }),
+      )
+
+      if (selectedLead && selectedLead.id === leadId) {
+        setSelectedLead({
+          ...selectedLead,
+          estagio_lead: newStage,
+          updated_at: updatedAt,
+          transferido_em: newStage === "transferidos" ? updatedAt : selectedLead.transferido_em,
+          transferido_vendedor:
+            newStage === "transferidos" ? selectedLead.vendedor || "" : selectedLead.transferido_vendedor,
+        })
+      }
+
+      try {
+        const success = await updateLeadStage(leadId, newStage)
+
+        if (!success) {
+          setLeads((prevLeads) => prevLeads.map((lead) => (lead.id === leadId ? leadData : lead)))
+
+          if (selectedLead && selectedLead.id === leadId) {
+            setSelectedLead(leadData)
+          }
+
+          setResumoMessage({
+            type: "error",
+            text: "Erro ao mover o lead. Verifique o console para mais detalhes e tente novamente.",
+          })
+          setTimeout(() => setResumoMessage(null), 5000)
+          return false
+        }
+
+        if (successMessage) {
+          setResumoMessage({
+            type: "success",
+            text: successMessage,
+          })
+          setTimeout(() => setResumoMessage(null), 5000)
+        }
+
+        await loadLeads()
+        return true
+      } catch (error) {
+        console.error("Unexpected error moving lead:", error)
+        setLeads((prevLeads) => prevLeads.map((lead) => (lead.id === leadId ? leadData : lead)))
+
+        if (selectedLead && selectedLead.id === leadId) {
+          setSelectedLead(leadData)
+        }
+
+        setResumoMessage({
+          type: "error",
+          text: "Erro inesperado ao mover o lead. Tente novamente.",
+        })
+        setTimeout(() => setResumoMessage(null), 5000)
+        return false
+      } finally {
+        setMovingLead(null)
+      }
+    },
+    [leads, loadLeads, selectedLead],
+  )
 
   const handleDragEnd = async (result: any) => {
     setDraggedLead(null)
@@ -367,6 +514,40 @@ export function KanbanBoard() {
     } finally {
       setMovingLead(null)
     }
+  }
+
+  const handleKanbanDragEnd = async (result: any) => {
+    setDraggedLead(null)
+
+    if (!result.destination) return
+
+    const { source, destination, draggableId } = result
+
+    const sourceStage = normalizeStage(source.droppableId)
+    const newStage = normalizeStage(destination.droppableId)
+
+    if (sourceStage === newStage) return
+
+    if (!isNegociacaoStage(newStage)) {
+      setResumoMessage({
+        type: "error",
+        text: `EstÃ¡gio invÃ¡lido: ${newStage}. Recarregue a pÃ¡gina e tente novamente.`,
+      })
+      setTimeout(() => setResumoMessage(null), 5000)
+      return
+    }
+
+    const leadId = Number.parseInt(draggableId)
+    await moveLeadToStage(leadId, newStage)
+  }
+
+  const handleMoveLeadToStage = async (leadId: number, stage: NegociacaoStage) => {
+    const stageLabel = ESTAGIO_LABELS_NEGOCIACOES[stage]
+    await moveLeadToStage(leadId, stage, `Lead movido para ${stageLabel} com sucesso!`)
+  }
+
+  const handleAtenderLeadAction = async (leadId: number) => {
+    await moveLeadToStage(leadId, "em_negociacao", "Lead movido para Em NegociaÃ§Ã£o com sucesso!")
   }
 
   const handleValueUpdate = (leadId: number, newValue: number) => {
@@ -652,8 +833,9 @@ export function KanbanBoard() {
             </CardContent>
           </Card>
 
-          <DragDropContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+          <DragDropContext onDragStart={handleDragStart} onDragEnd={handleKanbanDragEnd}>
             <div
+              ref={kanbanViewportRef}
               className="overflow-x-auto overflow-y-hidden pb-2"
               style={{ height: columnViewportHeight, minHeight: columnViewportHeight }}
             >
@@ -771,7 +953,7 @@ export function KanbanBoard() {
                                                 disabled={movingLead === lead.id}
                                                 onClick={(e) => {
                                                   e.stopPropagation()
-                                                  handleAtenderLead(lead.id)
+                                                  handleAtenderLeadAction(lead.id)
                                                 }}
                                               >
                                                 {movingLead === lead.id ? (
@@ -826,7 +1008,15 @@ export function KanbanBoard() {
             </div>
           </DragDropContext>
 
-          <Dialog open={!!selectedLead} onOpenChange={() => setSelectedLead(null)}>
+          <Dialog
+            open={!!selectedLead}
+            onOpenChange={(open) => {
+              if (!open) {
+                setSelectedLead(null)
+                setShowMoveStageOptions(false)
+              }
+            }}
+          >
             <DialogContent className="max-w-5xl max-h-[95vh] w-[95vw] overflow-hidden">
               <DialogHeader className="pb-4 border-b">
                 <DialogTitle className="flex items-center justify-between text-xl">
@@ -835,31 +1025,89 @@ export function KanbanBoard() {
                     Detalhes do Lead
                   </div>
                   {selectedLead && (
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => handleDeleteLead(selectedLead.id)}
-                      disabled={deletingLead === selectedLead.id}
-                      className="flex items-center gap-2"
-                    >
-                      {deletingLead === selectedLead.id ? (
-                        <>
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          Excluindo...
-                        </>
-                      ) : (
-                        <>
-                          <Trash2 className="h-4 w-4" />
-                          Excluir Lead
-                        </>
-                      )}
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowMoveStageOptions((prev) => !prev)}
+                        className="flex items-center gap-2"
+                      >
+                        <ArrowRightLeft className="h-4 w-4" />
+                        Mover Etapa
+                      </Button>
+
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => handleDeleteLead(selectedLead.id)}
+                        disabled={deletingLead === selectedLead.id}
+                        className="flex items-center gap-2"
+                      >
+                        {deletingLead === selectedLead.id ? (
+                          <>
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Excluindo...
+                          </>
+                        ) : (
+                          <>
+                            <Trash2 className="h-4 w-4" />
+                            Excluir Lead
+                          </>
+                        )}
+                      </Button>
+                    </div>
                   )}
                 </DialogTitle>
               </DialogHeader>
 
               {selectedLead && (
                 <div className="flex flex-col h-full max-h-[80vh]">
+                  {showMoveStageOptions && (
+                    <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50/70 p-4">
+                      <div className="mb-4 flex items-center gap-2">
+                        <ArrowRightLeft className="h-5 w-5 text-blue-600" />
+                        <h4 className="text-lg font-semibold text-blue-900">Mover Etapa</h4>
+                      </div>
+
+                      <div className="space-y-2">
+                        {COLUNAS_KANBAN.map((stage) => {
+                          const isCurrentStage = normalizeStage(selectedLead.estagio_lead) === stage
+
+                          return (
+                            <div
+                              key={stage}
+                              className="flex items-center justify-between rounded-lg border border-blue-100 bg-white px-4 py-3"
+                            >
+                              <Badge className={ESTAGIO_COLORS[stage as keyof typeof ESTAGIO_COLORS]}>
+                                {ESTAGIO_LABELS_NEGOCIACOES[stage]}
+                              </Badge>
+
+                              {isCurrentStage ? (
+                                <span className="text-sm font-medium text-gray-500">Atual</span>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={movingLead === selectedLead.id}
+                                  onClick={async () => {
+                                    await handleMoveLeadToStage(selectedLead.id, stage)
+                                    setShowMoveStageOptions(false)
+                                  }}
+                                >
+                                  {movingLead === selectedLead.id ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    "Mover"
+                                  )}
+                                </Button>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+
                   <div className="flex-shrink-0 space-y-4 pb-4 border-b">
                     <div className="flex items-center justify-between">
                       <div>
@@ -985,7 +1233,7 @@ export function KanbanBoard() {
                           <div className="flex gap-2">
                             {normalizeStage(selectedLead.estagio_lead) === "transferidos" && (
                               <Button
-                                onClick={() => handleAtenderLead(selectedLead.id)}
+                                onClick={() => handleAtenderLeadAction(selectedLead.id)}
                                 disabled={movingLead === selectedLead.id}
                                 className="bg-blue-600 hover:bg-blue-700 text-white"
                                 size="sm"
