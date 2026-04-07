@@ -19,7 +19,6 @@ import {
   type Lead,
   ESTAGIO_LABELS,
   ESTAGIO_COLORS,
-  VALID_ESTAGIOS,
   formatCurrency,
 } from "@/lib/leads"
 import { getCurrentUser } from "@/lib/auth"
@@ -61,8 +60,17 @@ const COLUNAS_KANBAN = [
   "pos_venda",
 ]
 
-const ESTAGIOS_NEGOCIACOES = VALID_ESTAGIOS.filter((stage) => stage !== "pesquisa_atendimento")
-const ESTAGIO_LABELS_NEGOCIACOES = Object.entries(ESTAGIO_LABELS).filter(([key]) => key !== "pesquisa_atendimento")
+const ESTAGIOS_NEGOCIACOES = [...COLUNAS_KANBAN]
+const ESTAGIO_LABELS_NEGOCIACOES = {
+  oportunidade: "Oportunidade",
+  em_qualificacao: "Em Qualificação",
+  transferidos: "Transferidos",
+  em_negociacao: "Em Negociação",
+  fechado: "Fechado",
+  nao_fechou: "Não Fechou",
+  follow_up: "Follow Up",
+  pos_venda: "Pós Venda",
+} satisfies Record<string, string>
 
 const TRANSFER_TIMEOUT_MS = 5 * 60 * 1000
 
@@ -605,7 +613,7 @@ export function KanbanBoard() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todos os estágios</SelectItem>
-                    {ESTAGIO_LABELS_NEGOCIACOES.map(([key, label]) => (
+                    {Object.entries(ESTAGIO_LABELS_NEGOCIACOES).map(([key, label]) => (
                       <SelectItem key={key} value={key}>
                         {label}
                       </SelectItem>
@@ -662,7 +670,7 @@ export function KanbanBoard() {
                           <CardTitle className="text-sm font-medium flex items-center justify-between">
                             <span className="flex items-center gap-2">
                               {snapshot.isDraggingOver && <Move className="h-4 w-4 text-blue-500 animate-pulse" />}
-                              {ESTAGIO_LABELS[stage as keyof typeof ESTAGIO_LABELS]}
+                              {ESTAGIO_LABELS_NEGOCIACOES[stage] || ESTAGIO_LABELS[stage as keyof typeof ESTAGIO_LABELS] || stage}
                             </span>
                             <div className="flex flex-col items-end gap-1">
                               <Badge variant="secondary" className="text-xs">

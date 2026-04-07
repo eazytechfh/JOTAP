@@ -1,11 +1,11 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { getCurrentUser, signOut, CARGO_LABELS, CARGO_COLORS } from "@/lib/auth"
+import { getCurrentUser, signOut, CARGO_LABELS, CARGO_COLORS, type User } from "@/lib/auth"
 import { LayoutDashboard, Users, Settings, LogOut, Zap, Menu, X, Shield, Car } from "lucide-react"
 
 const navigation = [
@@ -17,12 +17,17 @@ const navigation = [
 
 export function SidebarNav() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [user, setUser] = useState<User | null>(null)
   const pathname = usePathname()
   const router = useRouter()
-  const user = getCurrentUser()
+
+  useEffect(() => {
+    setUser(getCurrentUser())
+  }, [])
 
   const handleSignOut = () => {
     signOut()
+    setUser(null)
     router.push("/")
   }
 

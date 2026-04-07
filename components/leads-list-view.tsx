@@ -40,6 +40,17 @@ interface LeadsListViewProps {
   onLeadsUpdate: () => void
 }
 
+const ESTAGIO_LABELS_NEGOCIACOES = {
+  oportunidade: "Oportunidade",
+  em_qualificacao: "Em Qualificação",
+  transferidos: "Transferidos",
+  em_negociacao: "Em Negociação",
+  fechado: "Fechado",
+  nao_fechou: "Não Fechou",
+  follow_up: "Follow Up",
+  pos_venda: "Pós Venda",
+} satisfies Record<string, string>
+
 export function LeadsListView({ leads, onLeadsUpdate }: LeadsListViewProps) {
   const [filteredLeads, setFilteredLeads] = useState<Lead[]>(leads)
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null)
@@ -317,7 +328,7 @@ export function LeadsListView({ leads, onLeadsUpdate }: LeadsListViewProps) {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todos os estágios</SelectItem>
-                {Object.entries(ESTAGIO_LABELS).map(([key, label]) => (
+                {Object.entries(ESTAGIO_LABELS_NEGOCIACOES).map(([key, label]) => (
                   <SelectItem key={key} value={key}>
                     {label}
                   </SelectItem>
@@ -437,7 +448,7 @@ export function LeadsListView({ leads, onLeadsUpdate }: LeadsListViewProps) {
                           </div>
                         </SelectTrigger>
                         <SelectContent>
-                          {Object.entries(ESTAGIO_LABELS).map(([key, label]) => (
+                          {Object.entries(ESTAGIO_LABELS_NEGOCIACOES).map(([key, label]) => (
                             <SelectItem key={key} value={key}>
                               <div className="flex items-center gap-2">
                                 <Badge className={`${ESTAGIO_COLORS[key as keyof typeof ESTAGIO_COLORS]} text-xs`}>

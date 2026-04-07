@@ -21,6 +21,7 @@ export interface Lead {
 export const ESTAGIO_LABELS = {
   oportunidade: "Oportunidade",
   em_qualificacao: "Em Qualificação",
+  transferidos: "Transferidos",
   em_negociacao: "Em Negociação",
   fechado: "Fechado",
   nao_fechou: "Não Fechou",
@@ -32,6 +33,7 @@ export const ESTAGIO_LABELS = {
 export const ESTAGIO_COLORS = {
   oportunidade: "bg-blue-100 text-blue-800",
   em_qualificacao: "bg-yellow-100 text-yellow-800",
+  transferidos: "bg-orange-100 text-orange-800 border-orange-200",
   em_negociacao: "bg-purple-100 text-purple-800",
   fechado: "bg-emerald-100 text-emerald-800",
   nao_fechou: "bg-red-100 text-red-800",
@@ -44,6 +46,7 @@ export const ESTAGIO_COLORS = {
 export const VALID_ESTAGIOS = [
   "oportunidade",
   "em_qualificacao",
+  "transferidos",
   "em_negociacao",
   "fechado",
   "nao_fechou",
@@ -51,6 +54,10 @@ export const VALID_ESTAGIOS = [
   "follow_up",
   "pos_venda",
 ]
+
+function normalizeStageValue(stage?: string | null) {
+  return String(stage || "").trim().toLowerCase()
+}
 
 export async function getLeads(idEmpresa: number): Promise<Lead[]> {
   const supabase = createClient()
@@ -70,8 +77,10 @@ export async function getLeads(idEmpresa: number): Promise<Lead[]> {
 }
 
 export async function updateLeadStage(leadId: number, newStage: string): Promise<boolean> {
+  const normalizedStage = normalizeStageValue(newStage)
+
   // Validar se o estágio é válido
-  if (!VALID_ESTAGIOS.includes(newStage)) {
+  if (!VALID_ESTAGIOS.includes(normalizedStage)) {
     console.error("Invalid stage:", newStage)
     return false
   }
@@ -82,7 +91,7 @@ export async function updateLeadStage(leadId: number, newStage: string): Promise
     const { data, error } = await supabase
       .from("BASE_DE_LEADS")
       .update({
-        estagio_lead: newStage,
+        estagio_lead: normalizedStage,
         updated_at: new Date().toISOString(),
       })
       .eq("id", leadId)
@@ -109,7 +118,7 @@ export async function updateLeadStage(leadId: number, newStage: string): Promise
 
     console.log("Lead stage updated successfully:", {
       leadId,
-      newStage,
+      newStage: normalizedStage,
       updatedLead: data[0],
     })
 
