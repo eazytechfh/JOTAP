@@ -78,7 +78,7 @@ function isNegociacaoStage(stage: string): stage is NegociacaoStage {
   return ESTAGIOS_NEGOCIACOES.includes(stage as NegociacaoStage)
 }
 
-const TRANSFER_TIMEOUT_MS = 5 * 60 * 1000
+const TRANSFER_TIMEOUT_MS = 30 * 60 * 1000
 
 function normalizeStage(stage?: string | null) {
   return String(stage || "").trim().toLowerCase()
