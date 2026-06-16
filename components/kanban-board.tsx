@@ -265,6 +265,40 @@ interface KanbanColumnProps {
   onSelect: (lead: Lead) => void
 }
 
+interface KanbanCardListProps {
+  leads: Lead[]
+  movingLead: number | null
+  onValueUpdate: (leadId: number, newValue: number) => void
+  onAtender: (leadId: number) => void
+  onSelect: (lead: Lead) => void
+}
+
+// Separado do KanbanColumn para não re-renderizar quando isOver muda
+const KanbanCardList = memo(function KanbanCardList({
+  leads, movingLead, onValueUpdate, onAtender, onSelect,
+}: KanbanCardListProps) {
+  return (
+    <>
+      {leads.map((lead) => (
+        <KanbanCard
+          key={lead.id}
+          lead={lead}
+          movingLead={movingLead}
+          onValueUpdate={onValueUpdate}
+          onAtender={onAtender}
+          onSelect={onSelect}
+        />
+      ))}
+      {leads.length === 0 && (
+        <div className="text-center py-8 text-gray-400 border-2 border-dashed border-gray-200 rounded-lg">
+          <div className="text-xs">Nenhum lead neste estágio</div>
+          <div className="text-xs mt-1">Arraste leads aqui</div>
+        </div>
+      )}
+    </>
+  )
+})
+
 const KanbanColumn = memo(function KanbanColumn({
   stage, leads, total, movingLead, onValueUpdate, onAtender, onSelect,
 }: KanbanColumnProps) {
@@ -292,23 +326,13 @@ const KanbanColumn = memo(function KanbanColumn({
         ref={setNodeRef}
         className="kanban-column-scroll flex-1 space-y-2 overflow-y-auto px-4 pb-4 pt-0"
       >
-        {leads.map((lead) => (
-          <KanbanCard
-            key={lead.id}
-            lead={lead}
-            movingLead={movingLead}
-            onValueUpdate={onValueUpdate}
-            onAtender={onAtender}
-            onSelect={onSelect}
-          />
-        ))}
-
-        {leads.length === 0 && (
-          <div className="text-center py-8 text-gray-400 border-2 border-dashed border-gray-200 rounded-lg">
-            <div className="text-xs">Nenhum lead neste estágio</div>
-            <div className="text-xs mt-1">Arraste leads aqui</div>
-          </div>
-        )}
+        <KanbanCardList
+          leads={leads}
+          movingLead={movingLead}
+          onValueUpdate={onValueUpdate}
+          onAtender={onAtender}
+          onSelect={onSelect}
+        />
       </CardContent>
     </Card>
   )
@@ -317,7 +341,8 @@ const KanbanColumn = memo(function KanbanColumn({
 export function KanbanBoard() {
   const columnViewportHeight = "64rem"
   const [leads, setLeads] = useState<Lead[]>([])
-  const [filteredLeads, setFilteredLeads] = useState<Lead[]>([])
+  // filteredLeads é derivado — não precisa de estado separado
+
   const [loading, setLoading] = useState(true)
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
@@ -334,7 +359,7 @@ export function KanbanBoard() {
   const [showMoveStageOptions, setShowMoveStageOptions] = useState(false)
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
+    useSensor(PointerSensor, { activationConstraint: { distance: 3 } })
   )
 
   const loadLeads = useCallback(async () => {
@@ -380,15 +405,16 @@ export function KanbanBoard() {
     loadLeads()
   }, [loadLeads])
 
-  useEffect(() => {
-    let filtered = [...leads]
+  const filteredLeads = useMemo(() => {
+    let filtered = leads
 
     if (searchTerm) {
+      const term = searchTerm.toLowerCase()
       filtered = filtered.filter(
         (lead) =>
-          lead.nome_lead.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          lead.nome_lead.toLowerCase().includes(term) ||
           String(lead.telefone || "").includes(searchTerm) ||
-          lead.vendedor?.toLowerCase().includes(searchTerm.toLowerCase()),
+          lead.vendedor?.toLowerCase().includes(term),
       )
     }
 
@@ -397,7 +423,8 @@ export function KanbanBoard() {
     }
 
     if (filterEstagio && filterEstagio !== "all") {
-      filtered = filtered.filter((lead) => normalizeStage(lead.estagio_lead) === normalizeStage(filterEstagio))
+      const normalizedEstagio = normalizeStage(filterEstagio)
+      filtered = filtered.filter((lead) => normalizeStage(lead.estagio_lead) === normalizedEstagio)
     }
 
     if (filterDataInicio) {
@@ -412,7 +439,7 @@ export function KanbanBoard() {
       filtered = filtered.filter((lead) => new Date(lead.created_at) <= fim)
     }
 
-    setFilteredLeads(filtered)
+    return filtered
   }, [leads, searchTerm, filterOrigem, filterEstagio, filterDataInicio, filterDataFim])
 
   useEffect(() => {
