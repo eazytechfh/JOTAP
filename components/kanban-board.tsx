@@ -1,7 +1,18 @@
 "use client"
 
 import { useEffect, useState, useCallback, useRef, useMemo, memo } from "react"
-import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd"
+import {
+  DndContext,
+  DragOverlay,
+  useDroppable,
+  useDraggable,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragStartEvent,
+  type DragEndEvent,
+} from "@dnd-kit/core"
+import { CSS } from "@dnd-kit/utilities"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -164,116 +175,147 @@ const TransferCountdown = memo(function TransferCountdown({
 
 interface KanbanCardProps {
   lead: Lead
-  index: number
   movingLead: number | null
   onValueUpdate: (leadId: number, newValue: number) => void
   onAtender: (leadId: number) => void
   onSelect: (lead: Lead) => void
 }
 
-// Memoizado: só re-renderiza quando as props do próprio card mudarem.
-// Com useCallback nos handlers do KanbanBoard, a referência das funções
-// não muda entre renders — o memo passa a ter efeito real.
-const KanbanCard = memo(function KanbanCard({
-  lead,
-  index,
-  movingLead,
-  onValueUpdate,
-  onAtender,
-  onSelect,
-}: KanbanCardProps) {
+const KanbanCard = memo(function KanbanCard({ lead, movingLead, onValueUpdate, onAtender, onSelect }: KanbanCardProps) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: lead.id.toString(),
+    data: { stage: lead.estagio_lead },
+  })
+
   const isMoving = movingLead === lead.id
+  const style = transform ? { transform: CSS.Translate.toString(transform) } : undefined
 
   return (
-    <Draggable key={lead.id} draggableId={lead.id.toString()} index={index}>
-      {(provided, snapshot) => (
-        <Card
-          ref={provided.innerRef}
-          {...provided.draggableProps}
-          {...provided.dragHandleProps}
-          className={`cursor-grab active:cursor-grabbing transition-shadow duration-200 ${
-            snapshot.isDragging
-              ? "shadow-2xl rotate-3 scale-105 bg-white border-blue-300 z-50"
-              : "hover:shadow-md hover:-translate-y-1"
-          } ${isMoving ? "opacity-50" : ""}`}
-          onClick={() => {
-            if (!snapshot.isDragging) onSelect(lead)
-          }}
-        >
-          <CardContent className="p-3">
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <h4 className="font-medium text-sm text-gray-900 truncate flex-1">{lead.nome_lead}</h4>
-                <div className="flex items-center gap-1">
-                  {isMoving && <Loader2 className="h-3 w-3 animate-spin text-blue-500" />}
-                  <Move className="h-3 w-3 text-gray-400 flex-shrink-0" />
-                </div>
-              </div>
-
-              {lead.estagio_lead === "transferidos" && lead.transferido_em && (
-                <TransferCountdown transferidoEm={lead.transferido_em} />
-              )}
-
-              <div className="border border-gray-200 rounded p-1" onClick={(e) => e.stopPropagation()}>
-                <EditableValueField
-                  leadId={lead.id}
-                  currentValue={lead.valor || 0}
-                  onValueUpdate={onValueUpdate}
-                />
-              </div>
-
-              {lead.telefone && (
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-xs text-gray-600 flex items-center gap-1">
-                    <Phone className="h-3 w-3" />
-                    {lead.telefone}
-                  </p>
-                  {lead.estagio_lead === "transferidos" && (
-                    <Button
-                      size="sm"
-                      className="h-6 px-2 text-xs bg-blue-600 hover:bg-blue-700 text-white"
-                      disabled={isMoving}
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        onAtender(lead.id)
-                      }}
-                    >
-                      {isMoving ? <Loader2 className="h-3 w-3 animate-spin" /> : "Atender"}
-                    </Button>
-                  )}
-                </div>
-              )}
-
-              {lead.veiculo_interesse && (
-                <p className="text-xs text-gray-600 flex items-center gap-1 truncate">
-                  <Car className="h-3 w-3 flex-shrink-0" />
-                  <span className="truncate">{lead.veiculo_interesse}</span>
-                </p>
-              )}
-
-              <div className="flex justify-between items-center">
-                {lead.origem && (
-                  <Badge variant="outline" className="text-xs">
-                    {lead.origem}
-                  </Badge>
-                )}
-                {lead.vendedor && (
-                  <span className="text-xs text-gray-500 truncate ml-2">{lead.vendedor}</span>
-                )}
-              </div>
+    <Card
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      className={`cursor-grab active:cursor-grabbing transition-shadow duration-200 touch-none ${
+        isDragging ? "opacity-0" : "hover:shadow-md hover:-translate-y-1"
+      } ${isMoving ? "opacity-50" : ""}`}
+      onClick={() => { if (!isDragging) onSelect(lead) }}
+    >
+      <CardContent className="p-3">
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <h4 className="font-medium text-sm text-gray-900 truncate flex-1">{lead.nome_lead}</h4>
+            <div className="flex items-center gap-1">
+              {isMoving && <Loader2 className="h-3 w-3 animate-spin text-blue-500" />}
+              <Move className="h-3 w-3 text-gray-400 flex-shrink-0" />
             </div>
-          </CardContent>
-        </Card>
-      )}
-    </Draggable>
+          </div>
+
+          {lead.estagio_lead === "transferidos" && lead.transferido_em && (
+            <TransferCountdown transferidoEm={lead.transferido_em} />
+          )}
+
+          <div className="border border-gray-200 rounded p-1" onClick={(e) => e.stopPropagation()}>
+            <EditableValueField leadId={lead.id} currentValue={lead.valor || 0} onValueUpdate={onValueUpdate} />
+          </div>
+
+          {lead.telefone && (
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs text-gray-600 flex items-center gap-1">
+                <Phone className="h-3 w-3" />
+                {lead.telefone}
+              </p>
+              {lead.estagio_lead === "transferidos" && (
+                <Button
+                  size="sm"
+                  className="h-6 px-2 text-xs bg-blue-600 hover:bg-blue-700 text-white"
+                  disabled={isMoving}
+                  onClick={(e) => { e.stopPropagation(); onAtender(lead.id) }}
+                >
+                  {isMoving ? <Loader2 className="h-3 w-3 animate-spin" /> : "Atender"}
+                </Button>
+              )}
+            </div>
+          )}
+
+          {lead.veiculo_interesse && (
+            <p className="text-xs text-gray-600 flex items-center gap-1 truncate">
+              <Car className="h-3 w-3 flex-shrink-0" />
+              <span className="truncate">{lead.veiculo_interesse}</span>
+            </p>
+          )}
+
+          <div className="flex justify-between items-center">
+            {lead.origem && <Badge variant="outline" className="text-xs">{lead.origem}</Badge>}
+            {lead.vendedor && <span className="text-xs text-gray-500 truncate ml-2">{lead.vendedor}</span>}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  )
+})
+
+interface KanbanColumnProps {
+  stage: NegociacaoStage
+  leads: Lead[]
+  total: number
+  movingLead: number | null
+  onValueUpdate: (leadId: number, newValue: number) => void
+  onAtender: (leadId: number) => void
+  onSelect: (lead: Lead) => void
+}
+
+const KanbanColumn = memo(function KanbanColumn({
+  stage, leads, total, movingLead, onValueUpdate, onAtender, onSelect,
+}: KanbanColumnProps) {
+  const { setNodeRef, isOver } = useDroppable({ id: stage })
+
+  return (
+    <Card className={`flex h-full w-80 flex-shrink-0 flex-col transition-colors duration-150 ${
+      isOver ? "bg-blue-50 border-blue-300 shadow-lg" : "hover:shadow-md"
+    }`}>
+      <CardHeader className="flex-none pb-3">
+        <CardTitle className="text-sm font-medium flex items-center justify-between">
+          <span className="flex items-center gap-2">
+            {isOver && <Move className="h-4 w-4 text-blue-500 animate-pulse" />}
+            {ESTAGIO_LABELS_NEGOCIACOES[stage] || ESTAGIO_LABELS[stage as keyof typeof ESTAGIO_LABELS] || stage}
+          </span>
+          <div className="flex flex-col items-end gap-1">
+            <Badge variant="secondary" className="text-xs">{leads.length}</Badge>
+            <Badge variant="outline" className="text-xs text-green-600 border-green-200">{formatCurrency(total)}</Badge>
+          </div>
+        </CardTitle>
+        {isOver && <div className="text-xs text-blue-600 font-medium animate-pulse">↓ Solte aqui para mover</div>}
+      </CardHeader>
+
+      <CardContent
+        ref={setNodeRef}
+        className="kanban-column-scroll flex-1 space-y-2 overflow-y-auto px-4 pb-4 pt-0"
+      >
+        {leads.map((lead) => (
+          <KanbanCard
+            key={lead.id}
+            lead={lead}
+            movingLead={movingLead}
+            onValueUpdate={onValueUpdate}
+            onAtender={onAtender}
+            onSelect={onSelect}
+          />
+        ))}
+
+        {leads.length === 0 && (
+          <div className="text-center py-8 text-gray-400 border-2 border-dashed border-gray-200 rounded-lg">
+            <div className="text-xs">Nenhum lead neste estágio</div>
+            <div className="text-xs mt-1">Arraste leads aqui</div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   )
 })
 
 export function KanbanBoard() {
   const columnViewportHeight = "64rem"
-  const kanbanViewportRef = useRef<HTMLDivElement | null>(null)
-  const dragPointerXRef = useRef<number | null>(null)
-  const dragScrollFrameRef = useRef<number | null>(null)
   const [leads, setLeads] = useState<Lead[]>([])
   const [filteredLeads, setFilteredLeads] = useState<Lead[]>([])
   const [loading, setLoading] = useState(true)
@@ -286,10 +328,14 @@ export function KanbanBoard() {
   const [viewMode, setViewMode] = useState<"kanban" | "list">("kanban")
   const [generatingResumo, setGeneratingResumo] = useState(false)
   const [resumoMessage, setResumoMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
-  const [isDragging, setIsDragging] = useState(false)
+  const [activeLeadId, setActiveLeadId] = useState<string | null>(null)
   const [movingLead, setMovingLead] = useState<number | null>(null)
   const [deletingLead, setDeletingLead] = useState<number | null>(null)
   const [showMoveStageOptions, setShowMoveStageOptions] = useState(false)
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
+  )
 
   const loadLeads = useCallback(async () => {
     const user = getCurrentUser()
@@ -427,60 +473,9 @@ export function KanbanBoard() {
     }
   }, [loadLeads])
 
-  useEffect(() => {
-    if (!isDragging) {
-      dragPointerXRef.current = null
 
-      if (dragScrollFrameRef.current !== null) {
-        cancelAnimationFrame(dragScrollFrameRef.current)
-        dragScrollFrameRef.current = null
-      }
-
-      return
-    }
-
-    const handlePointerMove = (event: PointerEvent) => {
-      dragPointerXRef.current = event.clientX
-    }
-
-    const autoScroll = () => {
-      const viewport = kanbanViewportRef.current
-      const pointerX = dragPointerXRef.current
-
-      if (viewport && pointerX !== null) {
-        const rect = viewport.getBoundingClientRect()
-        const threshold = 140
-        const maxSpeed = 30
-
-        if (pointerX < rect.left + threshold) {
-          const distance = rect.left + threshold - pointerX
-          const speed = Math.min(maxSpeed, Math.max(8, distance / 4))
-          viewport.scrollLeft -= speed
-        } else if (pointerX > rect.right - threshold) {
-          const distance = pointerX - (rect.right - threshold)
-          const speed = Math.min(maxSpeed, Math.max(8, distance / 4))
-          viewport.scrollLeft += speed
-        }
-      }
-
-      dragScrollFrameRef.current = requestAnimationFrame(autoScroll)
-    }
-
-    window.addEventListener("pointermove", handlePointerMove)
-    dragScrollFrameRef.current = requestAnimationFrame(autoScroll)
-
-    return () => {
-      window.removeEventListener("pointermove", handlePointerMove)
-
-      if (dragScrollFrameRef.current !== null) {
-        cancelAnimationFrame(dragScrollFrameRef.current)
-        dragScrollFrameRef.current = null
-      }
-    }
-  }, [isDragging])
-
-  const handleDragStart = useCallback(() => {
-    setIsDragging(true)
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    setActiveLeadId(event.active.id as string)
   }, [])
 
   const moveLeadToStage = useCallback(
@@ -566,28 +561,20 @@ export function KanbanBoard() {
 
 
 
-  const handleKanbanDragEnd = useCallback(async (result: any) => {
-    setIsDragging(false)
+  const handleKanbanDragEnd = useCallback(async (event: DragEndEvent) => {
+    setActiveLeadId(null)
 
-    if (!result.destination) return
+    const { active, over } = event
+    if (!over) return
 
-    const { source, destination, draggableId } = result
-
-    const sourceStage = normalizeStage(source.droppableId)
-    const newStage = normalizeStage(destination.droppableId)
+    const sourceStage = normalizeStage(active.data.current?.stage as string)
+    const newStage = normalizeStage(over.id as string)
 
     if (sourceStage === newStage) return
 
-    if (!isNegociacaoStage(newStage)) {
-      setResumoMessage({
-        type: "error",
-        text: "Estágio inválido. Recarregue a página e tente novamente.",
-      })
-      setTimeout(() => setResumoMessage(null), 5000)
-      return
-    }
+    if (!isNegociacaoStage(newStage)) return
 
-    const leadId = Number.parseInt(draggableId)
+    const leadId = Number.parseInt(active.id as string)
     await moveLeadToStage(leadId, newStage)
   }, [moveLeadToStage])
 
@@ -923,76 +910,49 @@ export function KanbanBoard() {
             </CardContent>
           </Card>
 
-          <DragDropContext onDragStart={handleDragStart} onDragEnd={handleKanbanDragEnd}>
+          <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleKanbanDragEnd}>
             <div
-              ref={kanbanViewportRef}
               className="overflow-x-auto overflow-y-hidden pb-2"
               style={{ height: columnViewportHeight, minHeight: columnViewportHeight }}
             >
               <div className="flex h-full min-w-max gap-4 pb-2">
                 {COLUNAS_KANBAN.map((stage) => (
-                  <Droppable key={stage} droppableId={stage}>
-                    {(provided, snapshot) => (
-                      <Card
-                        className={`flex h-full w-80 flex-shrink-0 flex-col transition-colors duration-150 ${
-                          snapshot.isDraggingOver
-                            ? "bg-blue-50 border-blue-300 shadow-lg"
-                            : "hover:shadow-md"
-                        }`}
-                      >
-                        <CardHeader className="flex-none pb-3">
-                          <CardTitle className="text-sm font-medium flex items-center justify-between">
-                            <span className="flex items-center gap-2">
-                              {snapshot.isDraggingOver && <Move className="h-4 w-4 text-blue-500 animate-pulse" />}
-                              {ESTAGIO_LABELS_NEGOCIACOES[stage] || ESTAGIO_LABELS[stage as keyof typeof ESTAGIO_LABELS] || stage}
-                            </span>
-                            <div className="flex flex-col items-end gap-1">
-                              <Badge variant="secondary" className="text-xs">
-                                {leadsByStage[stage].length}
-                              </Badge>
-                              <Badge variant="outline" className="text-xs text-green-600 border-green-200">
-                                {formatCurrency(stageTotals[stage])}
-                              </Badge>
-                            </div>
-                          </CardTitle>
-                          {snapshot.isDraggingOver && (
-                            <div className="text-xs text-blue-600 font-medium animate-pulse">↓ Solte aqui para mover</div>
-                          )}
-                        </CardHeader>
-
-                        <CardContent
-                          ref={provided.innerRef}
-                          {...provided.droppableProps}
-                          className="kanban-column-scroll flex-1 space-y-2 overflow-y-auto px-4 pb-4 pt-0"
-                        >
-                          {leadsByStage[stage].map((lead, index) => (
-                            <KanbanCard
-                              key={lead.id}
-                              lead={lead}
-                              index={index}
-                              movingLead={movingLead}
-                              onValueUpdate={handleValueUpdate}
-                              onAtender={handleAtenderLeadAction}
-                              onSelect={handleSelectLead}
-                            />
-                          ))}
-
-                          {provided.placeholder}
-
-                          {leadsByStage[stage].length === 0 && (
-                            <div className="text-center py-8 text-gray-400 border-2 border-dashed border-gray-200 rounded-lg">
-                              <div className="text-xs">Nenhum lead neste estágio</div>
-                              <div className="text-xs mt-1">Arraste leads aqui</div>
-                            </div>
-                          )}
-                        </CardContent>
-                      </Card>
-                    )}
-                  </Droppable>
+                  <KanbanColumn
+                    key={stage}
+                    stage={stage}
+                    leads={leadsByStage[stage]}
+                    total={stageTotals[stage]}
+                    movingLead={movingLead}
+                    onValueUpdate={handleValueUpdate}
+                    onAtender={handleAtenderLeadAction}
+                    onSelect={handleSelectLead}
+                  />
                 ))}
               </div>
             </div>
-          </DragDropContext>
+
+            <DragOverlay>
+              {activeLeadId ? (() => {
+                const lead = leads.find((l) => l.id.toString() === activeLeadId)
+                if (!lead) return null
+                return (
+                  <Card className="w-72 cursor-grabbing shadow-2xl rotate-2 border-blue-300 bg-white">
+                    <CardContent className="p-3">
+                      <div className="space-y-1">
+                        <h4 className="font-medium text-sm text-gray-900 truncate">{lead.nome_lead}</h4>
+                        {lead.telefone && (
+                          <p className="text-xs text-gray-600 flex items-center gap-1">
+                            <Phone className="h-3 w-3" />{lead.telefone}
+                          </p>
+                        )}
+                        {lead.origem && <Badge variant="outline" className="text-xs">{lead.origem}</Badge>}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )
+              })() : null}
+            </DragOverlay>
+          </DndContext>
 
           <Dialog
             open={!!selectedLead}

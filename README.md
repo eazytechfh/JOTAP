@@ -158,6 +158,13 @@ pnpm dev
 
 ## Histórico de Alterações
 
+### 2026-06-16 — Sprint 6: migração @hello-pangea/dnd → @dnd-kit
+- **Arquivo alterado:** `components/kanban-board.tsx`
+- **Problema raiz:** `@hello-pangea/dnd` fazia broadcast de snapshot para todas as Droppables durante qualquer drag — todas as 8 colunas e ~1000 cards re-renderizavam a cada movimento do mouse.
+- **Fix:** Migrado para `@dnd-kit/core` + `@dnd-kit/utilities`. `KanbanCard` usa `useDraggable` hook. `KanbanColumn` (novo componente memo) usa `useDroppable` — só a coluna de destino re-renderiza. `DragOverlay` renderiza o preview do card fora do DOM das colunas.
+- **Bônus:** Auto-scroll horizontal nativo do `DndContext` substituiu o `requestAnimationFrame` manual (removidos `kanbanViewportRef`, `dragPointerXRef`, `dragScrollFrameRef` e o useEffect inteiro).
+- **Cuidados futuros:** `PointerSensor` com `activationConstraint: { distance: 8 }` evita drag acidental no clique. Se precisar de touch support, adicionar `TouchSensor` com o mesmo constraint. Virtualização agora é viável pois `@dnd-kit` tem suporte nativo.
+
 ### 2026-06-16 — Sprint 5: Supabase Realtime — fim do polling de 15s
 - **Arquivo alterado:** `components/kanban-board.tsx`
 - **Problema:** `setInterval` de 15s recarregava todos os ~1000 leads mesmo quando nada havia mudado, causando re-renders desnecessários.
