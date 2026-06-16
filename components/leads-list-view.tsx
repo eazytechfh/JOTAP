@@ -88,14 +88,14 @@ export function LeadsListView({ leads, onLeadsUpdate }: LeadsListViewProps) {
     }
 
     if (filterDataInicio) {
-      const inicio = new Date(filterDataInicio)
-      inicio.setHours(0, 0, 0, 0)
+      const [iy, im, id] = filterDataInicio.split("-").map(Number)
+      const inicio = new Date(iy, im - 1, id, 0, 0, 0, 0)
       filtered = filtered.filter((lead) => new Date(lead.created_at) >= inicio)
     }
 
     if (filterDataFim) {
-      const fim = new Date(filterDataFim)
-      fim.setHours(23, 59, 59, 999)
+      const [fy, fm, fd] = filterDataFim.split("-").map(Number)
+      const fim = new Date(fy, fm - 1, fd, 23, 59, 59, 999)
       filtered = filtered.filter((lead) => new Date(lead.created_at) <= fim)
     }
 
