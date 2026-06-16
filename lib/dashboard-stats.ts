@@ -225,40 +225,44 @@ export async function getDashboardData(idEmpresa: number, filters: DashboardFilt
     percentual: totalLeads > 0 ? (((quantidade as number) / totalLeads) * 100).toFixed(1) : "0",
   }))
 
-  // Para o gráfico de linha temporal (últimos 30 dias)
-  const estagioEvolution: EstagioEvolution[] = []
+  // Para o gráfico de linha temporal (últimos 30 dias) — O(n) via Map
+  const estagioEvolutionEstagios = [
+    "oportunidade",
+    "em_qualificacao",
+    "em_negociacao",
+    "follow_up",
+    "pesquisa_atendimento",
+    "fechado",
+    "nao_fechou",
+  ]
+
+  // Agrupa contagem por (dateString, estagio) em uma única passagem sobre leads
+  const leadCountByDateEstagio = new Map<string, Map<string, number>>()
+  for (const lead of leads) {
+    const dateKey = new Date(lead.created_at).toDateString()
+    if (!leadCountByDateEstagio.has(dateKey)) {
+      leadCountByDateEstagio.set(dateKey, new Map())
+    }
+    const estagioMap = leadCountByDateEstagio.get(dateKey)!
+    const estagio = lead.estagio_lead as string
+    estagioMap.set(estagio, (estagioMap.get(estagio) ?? 0) + 1)
+  }
+
   const last30Days = Array.from({ length: 30 }, (_, i) => {
     const date = new Date()
     date.setDate(date.getDate() - (29 - i))
     return date
   })
 
-  last30Days.forEach((date) => {
-    const dayLeads = leads.filter((lead) => {
-      const leadDate = new Date(lead.created_at)
-      return leadDate.toDateString() === date.toDateString()
-    })
-
+  const estagioEvolution: EstagioEvolution[] = last30Days.map((date) => {
     const dayData: EstagioEvolution = {
       data: date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }),
     }
-
-    // Contar leads por estágio neste dia específico
-    const estagios = [
-      "oportunidade",
-      "em_qualificacao",
-      "em_negociacao",
-      "follow_up",
-      "pesquisa_atendimento",
-      "fechado",
-      "nao_fechou",
-    ]
-
-    estagios.forEach((estagio) => {
-      dayData[estagio] = dayLeads.filter((lead) => lead.estagio_lead === estagio).length
-    })
-
-    estagioEvolution.push(dayData)
+    const estagioMap = leadCountByDateEstagio.get(date.toDateString())
+    for (const estagio of estagioEvolutionEstagios) {
+      dayData[estagio] = estagioMap?.get(estagio) ?? 0
+    }
+    return dayData
   })
 
   // Listas para filtros - espelhando exatamente as colunas da tabela

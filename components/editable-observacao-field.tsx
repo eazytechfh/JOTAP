@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, memo } from "react"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
 import { updateLeadObservacao } from "@/lib/leads"
@@ -15,7 +15,7 @@ interface EditableObservacaoFieldProps {
   className?: string
 }
 
-export function EditableObservacaoField({
+export const EditableObservacaoField = memo(function EditableObservacaoField({
   leadId,
   currentObservacao,
   onObservacaoUpdate,
@@ -125,4 +125,4 @@ export function EditableObservacaoField({
       </div>
     </div>
   )
-}
+})

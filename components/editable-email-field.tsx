@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, memo } from "react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { updateLeadEmail } from "@/lib/leads"
@@ -15,7 +15,7 @@ interface EditableEmailFieldProps {
   className?: string
 }
 
-export function EditableEmailField({ leadId, currentEmail, onEmailUpdate, className = "" }: EditableEmailFieldProps) {
+export const EditableEmailField = memo(function EditableEmailField({ leadId, currentEmail, onEmailUpdate, className = "" }: EditableEmailFieldProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [editValue, setEditValue] = useState(currentEmail || "")
   const [loading, setLoading] = useState(false)
@@ -124,4 +124,4 @@ export function EditableEmailField({ leadId, currentEmail, onEmailUpdate, classN
       <Edit3 className="h-4 w-4 text-purple-400 opacity-0 group-hover:opacity-100 transition-opacity" />
     </div>
   )
-}
+})

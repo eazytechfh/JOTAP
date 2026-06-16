@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, memo } from "react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { formatCurrency, parseCurrency, updateLeadValue } from "@/lib/leads"
@@ -15,7 +15,7 @@ interface EditableValueFieldProps {
   className?: string
 }
 
-export function EditableValueField({ leadId, currentValue, onValueUpdate, className = "" }: EditableValueFieldProps) {
+export const EditableValueField = memo(function EditableValueField({ leadId, currentValue, onValueUpdate, className = "" }: EditableValueFieldProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [editValue, setEditValue] = useState(formatCurrency(currentValue))
   const [loading, setLoading] = useState(false)
@@ -131,4 +131,4 @@ export function EditableValueField({ leadId, currentValue, onValueUpdate, classN
       <Edit3 className="h-3 w-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
     </div>
   )
-}
+})

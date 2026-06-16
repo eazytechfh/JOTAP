@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { type Lead, ESTAGIO_LABELS, ESTAGIO_COLORS, updateLeadStage, generateResumoComercial } from "@/lib/leads"
+import { type Lead, ESTAGIO_LABELS, ESTAGIO_COLORS, updateLeadStage, generateResumoComercial, getLeadById } from "@/lib/leads"
 import {
   Search,
   Filter,
@@ -57,13 +57,15 @@ export function LeadsListView({ leads, onLeadsUpdate }: LeadsListViewProps) {
   const [searchTerm, setSearchTerm] = useState("")
   const [filterOrigem, setFilterOrigem] = useState("")
   const [filterEstagio, setFilterEstagio] = useState("")
+  const [filterDataInicio, setFilterDataInicio] = useState("")
+  const [filterDataFim, setFilterDataFim] = useState("")
   const [updatingStage, setUpdatingStage] = useState<number | null>(null)
   const [generatingResumo, setGeneratingResumo] = useState(false)
   const [resumoMessage, setResumoMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
 
   React.useEffect(() => {
     filterLeads()
-  }, [leads, searchTerm, filterOrigem, filterEstagio])
+  }, [leads, searchTerm, filterOrigem, filterEstagio, filterDataInicio, filterDataFim])
 
   const filterLeads = () => {
     let filtered = [...leads]
@@ -83,6 +85,18 @@ export function LeadsListView({ leads, onLeadsUpdate }: LeadsListViewProps) {
 
     if (filterEstagio && filterEstagio !== "all") {
       filtered = filtered.filter((lead) => lead.estagio_lead === filterEstagio)
+    }
+
+    if (filterDataInicio) {
+      const inicio = new Date(filterDataInicio)
+      inicio.setHours(0, 0, 0, 0)
+      filtered = filtered.filter((lead) => new Date(lead.created_at) >= inicio)
+    }
+
+    if (filterDataFim) {
+      const fim = new Date(filterDataFim)
+      fim.setHours(23, 59, 59, 999)
+      filtered = filtered.filter((lead) => new Date(lead.created_at) <= fim)
     }
 
     setFilteredLeads(filtered)
@@ -183,6 +197,12 @@ export function LeadsListView({ leads, onLeadsUpdate }: LeadsListViewProps) {
 
     // Chamar callback para atualizar dados principais
     onLeadsUpdate()
+  }
+
+  const handleSelectLead = async (lead: Lead) => {
+    setSelectedLead(lead)
+    const full = await getLeadById(lead.id)
+    if (full) setSelectedLead(full)
   }
 
   const handleGenerateResumo = async () => {
@@ -336,6 +356,43 @@ export function LeadsListView({ leads, onLeadsUpdate }: LeadsListViewProps) {
               </SelectContent>
             </Select>
           </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4 items-end">
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray-500 font-medium flex items-center gap-1">
+                <Calendar className="h-3 w-3" />
+                Data de entrada — De
+              </label>
+              <Input
+                type="date"
+                value={filterDataInicio}
+                onChange={(e) => setFilterDataInicio(e.target.value)}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray-500 font-medium flex items-center gap-1">
+                <Calendar className="h-3 w-3" />
+                Data de entrada — Até
+              </label>
+              <Input
+                type="date"
+                value={filterDataFim}
+                onChange={(e) => setFilterDataFim(e.target.value)}
+              />
+            </div>
+            {(filterDataInicio || filterDataFim) && (
+              <div className="flex items-end">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => { setFilterDataInicio(""); setFilterDataFim("") }}
+                  className="text-xs text-gray-500"
+                >
+                  Limpar datas
+                </Button>
+              </div>
+            )}
+          </div>
         </CardContent>
       </Card>
 
@@ -464,7 +521,7 @@ export function LeadsListView({ leads, onLeadsUpdate }: LeadsListViewProps) {
                       {new Date(lead.created_at).toLocaleDateString("pt-BR")}
                     </TableCell>
                     <TableCell>
-                      <Button variant="ghost" size="sm" onClick={() => setSelectedLead(lead)} className="h-8 w-8 p-0">
+                      <Button variant="ghost" size="sm" onClick={() => handleSelectLead(lead)} className="h-8 w-8 p-0">
                         <Eye className="h-4 w-4" />
                       </Button>
                     </TableCell>

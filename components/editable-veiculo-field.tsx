@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, memo } from "react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { updateLeadVeiculo } from "@/lib/leads"
@@ -15,7 +15,7 @@ interface EditableVeiculoFieldProps {
   className?: string
 }
 
-export function EditableVeiculoField({
+export const EditableVeiculoField = memo(function EditableVeiculoField({
   leadId,
   currentVeiculo,
   onVeiculoUpdate,
@@ -119,4 +119,4 @@ export function EditableVeiculoField({
       <Edit3 className="h-4 w-4 text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity" />
     </div>
   )
-}
+})

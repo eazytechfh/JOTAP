@@ -59,12 +59,32 @@ function normalizeStageValue(stage?: string | null) {
   return String(stage || "").trim().toLowerCase()
 }
 
+// Campos usados nos cards do kanban e na listagem.
+// resumo_qualificacao e resumo_comercial são buscados só ao abrir o modal (getLeadById).
+const LEAD_LIST_FIELDS = [
+  "id",
+  "id_empresa",
+  "nome_lead",
+  "telefone",
+  "email",
+  "origem",
+  "vendedor",
+  "transferido_vendedor",
+  "veiculo_interesse",
+  "estagio_lead",
+  "valor",
+  "observacao_vendedor",
+  "transferido_em",
+  "created_at",
+  "updated_at",
+].join(",")
+
 export async function getLeads(idEmpresa: number): Promise<Lead[]> {
   const supabase = createClient()
 
   const { data, error } = await supabase
     .from("BASE_DE_LEADS")
-    .select("*")
+    .select(LEAD_LIST_FIELDS)
     .eq("id_empresa", idEmpresa)
     .order("created_at", { ascending: false })
 
@@ -74,6 +94,23 @@ export async function getLeads(idEmpresa: number): Promise<Lead[]> {
   }
 
   return data || []
+}
+
+export async function getLeadById(leadId: number): Promise<Lead | null> {
+  const supabase = createClient()
+
+  const { data, error } = await supabase
+    .from("BASE_DE_LEADS")
+    .select("*")
+    .eq("id", leadId)
+    .single()
+
+  if (error) {
+    console.error("Error fetching lead by id:", error)
+    return null
+  }
+
+  return data
 }
 
 export async function updateLeadStage(leadId: number, newStage: string): Promise<boolean> {
@@ -404,13 +441,15 @@ export async function sendPesquisaAtendimentoWebhook(lead: Lead): Promise<boolea
   }
 }
 
+const _currencyFormatter = new Intl.NumberFormat("pt-BR", {
+  style: "currency",
+  currency: "BRL",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+})
+
 export function formatCurrency(value: number): string {
-  return new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(value)
+  return _currencyFormatter.format(value)
 }
 
 export function parseCurrency(value: string): number {

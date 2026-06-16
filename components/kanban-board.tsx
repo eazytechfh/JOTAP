@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback, useRef } from "react"
+import { useEffect, useState, useCallback, useRef, useMemo, memo } from "react"
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -12,6 +12,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import {
   getLeads,
+  getLeadById,
   updateLeadStage,
   generateResumoComercial,
   deleteLead,
@@ -21,6 +22,7 @@ import {
   formatCurrency,
 } from "@/lib/leads"
 import { getCurrentUser } from "@/lib/auth"
+import { createClient } from "@/utils/supabase/client"
 import {
   Search,
   Filter,
@@ -120,6 +122,153 @@ function formatRemainingTime(ms: number) {
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`
 }
 
+// Timer isolado: só este componente re-renderiza a cada segundo.
+// O KanbanBoard e os outros 900+ cards ficam intocados.
+const TransferCountdown = memo(function TransferCountdown({
+  transferidoEm,
+}: {
+  transferidoEm: string
+}) {
+  const [now, setNow] = useState(Date.now)
+
+  useEffect(() => {
+    const interval = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(interval)
+  }, [])
+
+  const startedAt = parseSupabaseTimestamp(transferidoEm)
+  if (!startedAt) return null
+
+  const remainingMs = startedAt + TRANSFER_TIMEOUT_MS - now
+  const expired = remainingMs <= 0
+  const urgent = remainingMs > 0 && remainingMs <= 60_000
+
+  return (
+    <div
+      className={`flex items-center justify-between rounded-md border px-2 py-1 text-xs ${
+        expired
+          ? "border-red-200 bg-red-50 text-red-700"
+          : urgent
+            ? "border-amber-200 bg-amber-50 text-amber-700"
+            : "border-orange-200 bg-orange-50 text-orange-700"
+      }`}
+    >
+      <div className="flex items-center gap-1">
+        <Clock3 className="h-3 w-3" />
+        <span>Tempo restante</span>
+      </div>
+      <span className="font-semibold">{formatRemainingTime(remainingMs)}</span>
+    </div>
+  )
+})
+
+interface KanbanCardProps {
+  lead: Lead
+  index: number
+  movingLead: number | null
+  onValueUpdate: (leadId: number, newValue: number) => void
+  onAtender: (leadId: number) => void
+  onSelect: (lead: Lead) => void
+}
+
+// Memoizado: só re-renderiza quando as props do próprio card mudarem.
+// Com useCallback nos handlers do KanbanBoard, a referência das funções
+// não muda entre renders — o memo passa a ter efeito real.
+const KanbanCard = memo(function KanbanCard({
+  lead,
+  index,
+  movingLead,
+  onValueUpdate,
+  onAtender,
+  onSelect,
+}: KanbanCardProps) {
+  const isMoving = movingLead === lead.id
+
+  return (
+    <Draggable key={lead.id} draggableId={lead.id.toString()} index={index}>
+      {(provided, snapshot) => (
+        <Card
+          ref={provided.innerRef}
+          {...provided.draggableProps}
+          {...provided.dragHandleProps}
+          className={`cursor-grab active:cursor-grabbing transition-shadow duration-200 ${
+            snapshot.isDragging
+              ? "shadow-2xl rotate-3 scale-105 bg-white border-blue-300 z-50"
+              : "hover:shadow-md hover:-translate-y-1"
+          } ${isMoving ? "opacity-50" : ""}`}
+          onClick={() => {
+            if (!snapshot.isDragging) onSelect(lead)
+          }}
+        >
+          <CardContent className="p-3">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <h4 className="font-medium text-sm text-gray-900 truncate flex-1">{lead.nome_lead}</h4>
+                <div className="flex items-center gap-1">
+                  {isMoving && <Loader2 className="h-3 w-3 animate-spin text-blue-500" />}
+                  <Move className="h-3 w-3 text-gray-400 flex-shrink-0" />
+                </div>
+              </div>
+
+              {lead.estagio_lead === "transferidos" && lead.transferido_em && (
+                <TransferCountdown transferidoEm={lead.transferido_em} />
+              )}
+
+              <div className="border border-gray-200 rounded p-1" onClick={(e) => e.stopPropagation()}>
+                <EditableValueField
+                  leadId={lead.id}
+                  currentValue={lead.valor || 0}
+                  onValueUpdate={onValueUpdate}
+                />
+              </div>
+
+              {lead.telefone && (
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs text-gray-600 flex items-center gap-1">
+                    <Phone className="h-3 w-3" />
+                    {lead.telefone}
+                  </p>
+                  {lead.estagio_lead === "transferidos" && (
+                    <Button
+                      size="sm"
+                      className="h-6 px-2 text-xs bg-blue-600 hover:bg-blue-700 text-white"
+                      disabled={isMoving}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onAtender(lead.id)
+                      }}
+                    >
+                      {isMoving ? <Loader2 className="h-3 w-3 animate-spin" /> : "Atender"}
+                    </Button>
+                  )}
+                </div>
+              )}
+
+              {lead.veiculo_interesse && (
+                <p className="text-xs text-gray-600 flex items-center gap-1 truncate">
+                  <Car className="h-3 w-3 flex-shrink-0" />
+                  <span className="truncate">{lead.veiculo_interesse}</span>
+                </p>
+              )}
+
+              <div className="flex justify-between items-center">
+                {lead.origem && (
+                  <Badge variant="outline" className="text-xs">
+                    {lead.origem}
+                  </Badge>
+                )}
+                {lead.vendedor && (
+                  <span className="text-xs text-gray-500 truncate ml-2">{lead.vendedor}</span>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </Draggable>
+  )
+})
+
 export function KanbanBoard() {
   const columnViewportHeight = "64rem"
   const kanbanViewportRef = useRef<HTMLDivElement | null>(null)
@@ -132,14 +281,15 @@ export function KanbanBoard() {
   const [searchTerm, setSearchTerm] = useState("")
   const [filterOrigem, setFilterOrigem] = useState("")
   const [filterEstagio, setFilterEstagio] = useState("")
+  const [filterDataInicio, setFilterDataInicio] = useState("")
+  const [filterDataFim, setFilterDataFim] = useState("")
   const [viewMode, setViewMode] = useState<"kanban" | "list">("kanban")
   const [generatingResumo, setGeneratingResumo] = useState(false)
   const [resumoMessage, setResumoMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
-  const [draggedLead, setDraggedLead] = useState<Lead | null>(null)
+  const [isDragging, setIsDragging] = useState(false)
   const [movingLead, setMovingLead] = useState<number | null>(null)
   const [deletingLead, setDeletingLead] = useState<number | null>(null)
   const [showMoveStageOptions, setShowMoveStageOptions] = useState(false)
-  const [now, setNow] = useState(Date.now())
 
   const loadLeads = useCallback(async () => {
     const user = getCurrentUser()
@@ -155,18 +305,24 @@ export function KanbanBoard() {
 
       const isAdmin = user.cargo === "administrador"
 
-      if (isAdmin) {
-        setLeads(normalizedData)
-      } else {
-        const vendedorNome = (user.nome_usuario || "").trim().toLowerCase()
+      const incoming = isAdmin
+        ? normalizedData
+        : (() => {
+            const vendedorNome = (user.nome_usuario || "").trim().toLowerCase()
+            return normalizedData.filter((lead) => {
+              const leadVendedor = (lead.vendedor || "").trim().toLowerCase()
+              return leadVendedor !== "" && leadVendedor === vendedorNome
+            })
+          })()
 
-        const onlyMine = normalizedData.filter((lead) => {
-          const leadVendedor = (lead.vendedor || "").trim().toLowerCase()
-          return leadVendedor !== "" && leadVendedor === vendedorNome
+      // Preserva referências de leads que não mudaram — mantém React.memo efetivo
+      setLeads((prev) => {
+        const prevMap = new Map(prev.map((l) => [l.id, l]))
+        return incoming.map((lead) => {
+          const old = prevMap.get(lead.id)
+          return old && old.updated_at === lead.updated_at ? old : lead
         })
-
-        setLeads(onlyMine)
-      }
+      })
     } catch (error) {
       console.error("Erro ao carregar leads:", error)
     } finally {
@@ -198,27 +354,81 @@ export function KanbanBoard() {
       filtered = filtered.filter((lead) => normalizeStage(lead.estagio_lead) === normalizeStage(filterEstagio))
     }
 
+    if (filterDataInicio) {
+      const inicio = new Date(filterDataInicio)
+      inicio.setHours(0, 0, 0, 0)
+      filtered = filtered.filter((lead) => new Date(lead.created_at) >= inicio)
+    }
+
+    if (filterDataFim) {
+      const fim = new Date(filterDataFim)
+      fim.setHours(23, 59, 59, 999)
+      filtered = filtered.filter((lead) => new Date(lead.created_at) <= fim)
+    }
+
     setFilteredLeads(filtered)
-  }, [leads, searchTerm, filterOrigem, filterEstagio])
+  }, [leads, searchTerm, filterOrigem, filterEstagio, filterDataInicio, filterDataFim])
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      setNow(Date.now())
-    }, 1000)
+    const user = getCurrentUser()
+    if (!user) return
 
-    return () => clearInterval(interval)
-  }, [])
+    const isAdmin = user.cargo === "administrador"
+    const vendedorNome = (user.nome_usuario || "").trim().toLowerCase()
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      loadLeads()
-    }, 15000)
+    const supabase = createClient()
 
-    return () => clearInterval(interval)
+    const channel = supabase
+      .channel("leads-realtime")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "BASE_DE_LEADS",
+          filter: `id_empresa=eq.${user.id_empresa}`,
+        },
+        (payload) => {
+          if (payload.eventType === "INSERT") {
+            const lead = normalizeLead(payload.new as Lead)
+            const belongs = isAdmin || (lead.vendedor || "").trim().toLowerCase() === vendedorNome
+            if (belongs) {
+              setLeads((prev) => [lead, ...prev])
+            }
+          }
+
+          if (payload.eventType === "UPDATE") {
+            const updated = normalizeLead(payload.new as Lead)
+            setLeads((prev) => {
+              const exists = prev.some((l) => l.id === updated.id)
+              if (!exists) return prev
+              return prev.map((l) => (l.id === updated.id ? updated : l))
+            })
+            setSelectedLead((prev) => (prev?.id === updated.id ? { ...prev, ...updated } : prev))
+          }
+
+          if (payload.eventType === "DELETE") {
+            const deletedId = (payload.old as { id: number }).id
+            setLeads((prev) => prev.filter((l) => l.id !== deletedId))
+            setSelectedLead((prev) => (prev?.id === deletedId ? null : prev))
+          }
+        },
+      )
+      .subscribe((status) => {
+        // Reconexão: recarrega tudo para garantir sincronia
+        if (status === "SUBSCRIBED") return
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          loadLeads()
+        }
+      })
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
   }, [loadLeads])
 
   useEffect(() => {
-    if (!draggedLead) {
+    if (!isDragging) {
       dragPointerXRef.current = null
 
       if (dragScrollFrameRef.current !== null) {
@@ -267,52 +477,23 @@ export function KanbanBoard() {
         dragScrollFrameRef.current = null
       }
     }
-  }, [draggedLead])
+  }, [isDragging])
 
-  const getTransferCountdown = (lead: Lead) => {
-    if (normalizeStage(lead.estagio_lead) !== "transferidos") return null
-    if (!lead.transferido_em) return null
-
-    const startedAt = parseSupabaseTimestamp(lead.transferido_em)
-    if (!startedAt) return null
-
-    const deadline = startedAt + TRANSFER_TIMEOUT_MS
-    const remainingMs = deadline - now
-
-    return {
-      remainingMs,
-      formatted: formatRemainingTime(remainingMs),
-      expired: remainingMs <= 0,
-      urgent: remainingMs > 0 && remainingMs <= 60_000,
-    }
-  }
-
-  const handleDragStart = (start: any) => {
-    const leadId = Number.parseInt(start.draggableId)
-    const lead = leads.find((l) => l.id === leadId)
-    setDraggedLead(lead || null)
-  }
+  const handleDragStart = useCallback(() => {
+    setIsDragging(true)
+  }, [])
 
   const moveLeadToStage = useCallback(
     async (leadId: number, newStage: NegociacaoStage, successMessage?: string) => {
-      const leadData = leads.find((lead) => lead.id === leadId)
-
-      if (!leadData) {
-        setResumoMessage({
-          type: "error",
-          text: "NÃ£o foi possÃ­vel localizar o lead. Atualize a tela e tente novamente.",
-        })
-        setTimeout(() => setResumoMessage(null), 5000)
-        return false
-      }
-
       const updatedAt = new Date().toISOString()
+      let leadData: Lead | undefined
 
-      setMovingLead(leadId)
-      setLeads((prevLeads) =>
-        prevLeads.map((lead) => {
+      // Aplica update otimista e captura leadData para rollback — tudo em uma passagem
+      setLeads((prevLeads) => {
+        leadData = prevLeads.find((l) => l.id === leadId)
+        if (!leadData) return prevLeads
+        return prevLeads.map((lead) => {
           if (lead.id !== leadId) return lead
-
           return {
             ...lead,
             estagio_lead: newStage,
@@ -320,30 +501,38 @@ export function KanbanBoard() {
             transferido_em: newStage === "transferidos" ? updatedAt : lead.transferido_em,
             transferido_vendedor: newStage === "transferidos" ? lead.vendedor || "" : lead.transferido_vendedor,
           }
-        }),
-      )
+        })
+      })
 
-      if (selectedLead && selectedLead.id === leadId) {
-        setSelectedLead({
-          ...selectedLead,
+      if (!leadData) {
+        setResumoMessage({
+          type: "error",
+          text: "Não foi possível localizar o lead. Atualize a tela e tente novamente.",
+        })
+        setTimeout(() => setResumoMessage(null), 5000)
+        return false
+      }
+
+      const snapshot = leadData
+
+      setMovingLead(leadId)
+      setSelectedLead((prev) => {
+        if (!prev || prev.id !== leadId) return prev
+        return {
+          ...prev,
           estagio_lead: newStage,
           updated_at: updatedAt,
-          transferido_em: newStage === "transferidos" ? updatedAt : selectedLead.transferido_em,
-          transferido_vendedor:
-            newStage === "transferidos" ? selectedLead.vendedor || "" : selectedLead.transferido_vendedor,
-        })
-      }
+          transferido_em: newStage === "transferidos" ? updatedAt : prev.transferido_em,
+          transferido_vendedor: newStage === "transferidos" ? prev.vendedor || "" : prev.transferido_vendedor,
+        }
+      })
 
       try {
         const success = await updateLeadStage(leadId, newStage)
 
         if (!success) {
-          setLeads((prevLeads) => prevLeads.map((lead) => (lead.id === leadId ? leadData : lead)))
-
-          if (selectedLead && selectedLead.id === leadId) {
-            setSelectedLead(leadData)
-          }
-
+          setLeads((prevLeads) => prevLeads.map((lead) => (lead.id === leadId ? snapshot : lead)))
+          setSelectedLead((prev) => (prev?.id === leadId ? snapshot : prev))
           setResumoMessage({
             type: "error",
             text: "Erro ao mover o lead. Verifique o console para mais detalhes e tente novamente.",
@@ -353,23 +542,15 @@ export function KanbanBoard() {
         }
 
         if (successMessage) {
-          setResumoMessage({
-            type: "success",
-            text: successMessage,
-          })
+          setResumoMessage({ type: "success", text: successMessage })
           setTimeout(() => setResumoMessage(null), 5000)
         }
 
-        await loadLeads()
         return true
       } catch (error) {
         console.error("Unexpected error moving lead:", error)
-        setLeads((prevLeads) => prevLeads.map((lead) => (lead.id === leadId ? leadData : lead)))
-
-        if (selectedLead && selectedLead.id === leadId) {
-          setSelectedLead(leadData)
-        }
-
+        setLeads((prevLeads) => prevLeads.map((lead) => (lead.id === leadId ? snapshot : lead)))
+        setSelectedLead((prev) => (prev?.id === leadId ? snapshot : prev))
         setResumoMessage({
           type: "error",
           text: "Erro inesperado ao mover o lead. Tente novamente.",
@@ -380,144 +561,13 @@ export function KanbanBoard() {
         setMovingLead(null)
       }
     },
-    [leads, loadLeads, selectedLead],
+    [],
   )
 
-  const handleDragEnd = async (result: any) => {
-    setDraggedLead(null)
 
-    if (!result.destination) return
 
-    const { source, destination, draggableId } = result
-
-    const sourceStage = normalizeStage(source.droppableId)
-    const newStage = normalizeStage(destination.droppableId)
-
-    if (sourceStage === newStage) return
-
-    const leadId = Number.parseInt(draggableId)
-    const leadData = leads.find((lead) => lead.id === leadId)
-
-    if (!leadData) {
-      setResumoMessage({
-        type: "error",
-        text: "NÃ£o foi possÃ­vel identificar o lead arrastado. Atualize a tela e tente novamente.",
-      })
-      setTimeout(() => setResumoMessage(null), 5000)
-      return
-    }
-
-    if (!isNegociacaoStage(newStage)) {
-      setResumoMessage({
-        type: "error",
-        text: `Estágio inválido: ${newStage}. Recarregue a página e tente novamente.`,
-      })
-      setTimeout(() => setResumoMessage(null), 5000)
-      return
-    }
-
-    setMovingLead(leadId)
-    const updatedLeadData = {
-      ...leadData,
-      estagio_lead: newStage,
-      updated_at: new Date().toISOString(),
-      transferido_em: newStage === "transferidos" ? new Date().toISOString() : leadData.transferido_em,
-      transferido_vendedor: newStage === "transferidos" ? leadData.vendedor || "" : leadData.transferido_vendedor,
-    }
-
-    setLeads((prevLeads) =>
-      prevLeads.map((lead) => {
-        if (lead.id !== leadId) return lead
-
-        return {
-          ...lead,
-          estagio_lead: newStage,
-          updated_at: new Date().toISOString(),
-          transferido_em: newStage === "transferidos" ? new Date().toISOString() : lead.transferido_em,
-          transferido_vendedor: newStage === "transferidos" ? lead.vendedor || "" : lead.transferido_vendedor,
-        }
-      }),
-    )
-
-    try {
-      const success = await updateLeadStage(leadId, newStage)
-
-      if (!success) {
-        setLeads((prevLeads) => prevLeads.map((lead) => (lead.id === leadId ? leadData : lead)))
-
-        setResumoMessage({
-          type: "error",
-          text: "Erro ao mover o lead. Verifique o console para mais detalhes e tente novamente.",
-        })
-
-        setTimeout(() => setResumoMessage(null), 5000)
-      } else {
-        await loadLeads()
-      }
-    } catch (error) {
-      console.error("Unexpected error moving lead:", error)
-
-      setLeads((prevLeads) => prevLeads.map((lead) => (lead.id === leadId ? leadData : lead)))
-
-      setResumoMessage({
-        type: "error",
-        text: "Erro inesperado ao mover o lead. Tente novamente.",
-      })
-
-      setTimeout(() => setResumoMessage(null), 5000)
-    } finally {
-      setMovingLead(null)
-    }
-  }
-
-  const handleAtenderLead = async (leadId: number) => {
-    setMovingLead(leadId)
-
-    try {
-      const success = await updateLeadStage(leadId, "em_negociacao")
-
-      if (!success) {
-        setResumoMessage({
-          type: "error",
-          text: "Erro ao atender o lead. Tente novamente.",
-        })
-        setTimeout(() => setResumoMessage(null), 5000)
-        return
-      }
-
-      setResumoMessage({
-        type: "success",
-        text: "Lead movido para Em Negociação com sucesso!",
-      })
-      setTimeout(() => setResumoMessage(null), 5000)
-
-      await loadLeads()
-
-      if (selectedLead && selectedLead.id === leadId) {
-        setSelectedLead((prev) =>
-          prev
-            ? {
-                ...prev,
-                estagio_lead: "em_negociacao",
-                updated_at: new Date().toISOString(),
-              }
-            : null,
-        )
-      }
-    } catch (error) {
-      console.error("Erro ao atender lead:", error)
-      setResumoMessage({
-        type: "error",
-        text: "Erro inesperado ao atender o lead.",
-      })
-      setTimeout(() => setResumoMessage(null), 5000)
-    } finally {
-      setMovingLead(null)
-    }
-  }
-
-  const handleKanbanDragEnd = async (result: any) => {
-    setDraggedLead(null)
+  const handleKanbanDragEnd = useCallback(async (result: any) => {
+    setIsDragging(false)
 
     if (!result.destination) return
 
@@ -531,7 +581,7 @@ export function KanbanBoard() {
     if (!isNegociacaoStage(newStage)) {
       setResumoMessage({
         type: "error",
-        text: `EstÃ¡gio invÃ¡lido: ${newStage}. Recarregue a pÃ¡gina e tente novamente.`,
+        text: "Estágio inválido. Recarregue a página e tente novamente.",
       })
       setTimeout(() => setResumoMessage(null), 5000)
       return
@@ -539,7 +589,7 @@ export function KanbanBoard() {
 
     const leadId = Number.parseInt(draggableId)
     await moveLeadToStage(leadId, newStage)
-  }
+  }, [moveLeadToStage])
 
   const handleMoveLeadToStage = async (leadId: number, stage: NegociacaoStage) => {
     const stageLabel = ESTAGIO_LABELS_NEGOCIACOES[stage]
@@ -550,41 +600,35 @@ export function KanbanBoard() {
     await moveLeadToStage(leadId, "em_negociacao", "Lead movido para Em NegociaÃ§Ã£o com sucesso!")
   }
 
-  const handleValueUpdate = (leadId: number, newValue: number) => {
+  const handleValueUpdate = useCallback((leadId: number, newValue: number) => {
     setLeads((prevLeads) => prevLeads.map((lead) => (lead.id === leadId ? { ...lead, valor: newValue } : lead)))
+    setSelectedLead((prev) => (prev?.id === leadId ? { ...prev, valor: newValue } : prev))
+  }, [])
 
-    if (selectedLead && selectedLead.id === leadId) {
-      setSelectedLead({ ...selectedLead, valor: newValue })
-    }
-  }
-
-  const handleObservacaoUpdate = (leadId: number, newObservacao: string) => {
+  const handleObservacaoUpdate = useCallback((leadId: number, newObservacao: string) => {
     setLeads((prevLeads) =>
       prevLeads.map((lead) => (lead.id === leadId ? { ...lead, observacao_vendedor: newObservacao } : lead)),
     )
+    setSelectedLead((prev) => (prev?.id === leadId ? { ...prev, observacao_vendedor: newObservacao } : prev))
+  }, [])
 
-    if (selectedLead && selectedLead.id === leadId) {
-      setSelectedLead({ ...selectedLead, observacao_vendedor: newObservacao })
-    }
-  }
-
-  const handleVeiculoUpdate = (leadId: number, newVeiculo: string) => {
+  const handleVeiculoUpdate = useCallback((leadId: number, newVeiculo: string) => {
     setLeads((prevLeads) =>
       prevLeads.map((lead) => (lead.id === leadId ? { ...lead, veiculo_interesse: newVeiculo } : lead)),
     )
+    setSelectedLead((prev) => (prev?.id === leadId ? { ...prev, veiculo_interesse: newVeiculo } : prev))
+  }, [])
 
-    if (selectedLead && selectedLead.id === leadId) {
-      setSelectedLead({ ...selectedLead, veiculo_interesse: newVeiculo })
-    }
-  }
-
-  const handleEmailUpdate = (leadId: number, newEmail: string) => {
+  const handleEmailUpdate = useCallback((leadId: number, newEmail: string) => {
     setLeads((prevLeads) => prevLeads.map((lead) => (lead.id === leadId ? { ...lead, email: newEmail } : lead)))
+    setSelectedLead((prev) => (prev?.id === leadId ? { ...prev, email: newEmail } : prev))
+  }, [])
 
-    if (selectedLead && selectedLead.id === leadId) {
-      setSelectedLead({ ...selectedLead, email: newEmail })
-    }
-  }
+  const handleSelectLead = useCallback(async (lead: Lead) => {
+    setSelectedLead(lead)
+    const full = await getLeadById(lead.id)
+    if (full) setSelectedLead(full)
+  }, [])
 
   const handleGenerateResumo = async () => {
     if (!selectedLead) return
@@ -663,28 +707,37 @@ export function KanbanBoard() {
     }
   }
 
-  const getLeadsByStage = (stage: string) => {
-    const normalizedStage = normalizeStage(stage)
-    const stageLeads = filteredLeads.filter((lead) => normalizeStage(lead.estagio_lead) === normalizedStage)
+  // Um único forEach distribui todos os leads nas 8 colunas de uma vez.
+  // Recalcula apenas quando filteredLeads muda — não a cada render.
+  const leadsByStage = useMemo(() => {
+    const map = {} as Record<NegociacaoStage, Lead[]>
+    for (const stage of COLUNAS_KANBAN) map[stage] = []
 
-    if (normalizedStage !== "em_negociacao") {
-      return stageLeads
+    for (const lead of filteredLeads) {
+      const s = lead.estagio_lead as NegociacaoStage
+      if (map[s]) map[s].push(lead)
     }
 
-    return [...stageLeads].sort((a, b) => {
-      const updatedAtA = parseSupabaseTimestamp(a.updated_at) ?? 0
-      const updatedAtB = parseSupabaseTimestamp(b.updated_at) ?? 0
+    // Ordenação de em_negociacao por mais recente
+    map["em_negociacao"] = map["em_negociacao"].sort(
+      (a, b) => (parseSupabaseTimestamp(b.updated_at) ?? 0) - (parseSupabaseTimestamp(a.updated_at) ?? 0),
+    )
 
-      return updatedAtB - updatedAtA
-    })
-  }
+    return map
+  }, [filteredLeads])
 
-  const getStageTotal = (stage: string) => {
-    const stageLeads = getLeadsByStage(stage)
-    return stageLeads.reduce((total, lead) => total + (lead.valor || 0), 0)
-  }
+  const stageTotals = useMemo(() => {
+    const totals = {} as Record<NegociacaoStage, number>
+    for (const stage of COLUNAS_KANBAN) {
+      totals[stage] = leadsByStage[stage].reduce((sum, lead) => sum + (lead.valor || 0), 0)
+    }
+    return totals
+  }, [leadsByStage])
 
-  const origens = [...new Set(leads.map((lead) => lead.origem).filter(Boolean))]
+  const origens = useMemo(
+    () => [...new Set(leads.map((lead) => lead.origem).filter(Boolean))],
+    [leads],
+  )
 
   const handleLeadsUpdate = () => {
     loadLeads()
@@ -804,6 +857,43 @@ export function KanbanBoard() {
                   </SelectContent>
                 </Select>
               </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4 items-end">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-gray-500 font-medium flex items-center gap-1">
+                    <Calendar className="h-3 w-3" />
+                    Data de entrada — De
+                  </label>
+                  <Input
+                    type="date"
+                    value={filterDataInicio}
+                    onChange={(e) => setFilterDataInicio(e.target.value)}
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-gray-500 font-medium flex items-center gap-1">
+                    <Calendar className="h-3 w-3" />
+                    Data de entrada — Até
+                  </label>
+                  <Input
+                    type="date"
+                    value={filterDataFim}
+                    onChange={(e) => setFilterDataFim(e.target.value)}
+                  />
+                </div>
+                {(filterDataInicio || filterDataFim) && (
+                  <div className="flex items-end">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => { setFilterDataInicio(""); setFilterDataFim("") }}
+                      className="text-xs text-gray-500"
+                    >
+                      Limpar datas
+                    </Button>
+                  </div>
+                )}
+              </div>
             </CardContent>
           </Card>
 
@@ -844,9 +934,9 @@ export function KanbanBoard() {
                   <Droppable key={stage} droppableId={stage}>
                     {(provided, snapshot) => (
                       <Card
-                        className={`flex h-full w-80 flex-shrink-0 flex-col transition-all duration-200 ${
+                        className={`flex h-full w-80 flex-shrink-0 flex-col transition-colors duration-150 ${
                           snapshot.isDraggingOver
-                            ? "bg-gradient-to-b from-blue-50 to-blue-100 border-blue-300 shadow-lg transform scale-105"
+                            ? "bg-blue-50 border-blue-300 shadow-lg"
                             : "hover:shadow-md"
                         }`}
                       >
@@ -858,10 +948,10 @@ export function KanbanBoard() {
                             </span>
                             <div className="flex flex-col items-end gap-1">
                               <Badge variant="secondary" className="text-xs">
-                                {getLeadsByStage(stage).length}
+                                {leadsByStage[stage].length}
                               </Badge>
                               <Badge variant="outline" className="text-xs text-green-600 border-green-200">
-                                {formatCurrency(getStageTotal(stage))}
+                                {formatCurrency(stageTotals[stage])}
                               </Badge>
                             </div>
                           </CardTitle>
@@ -875,125 +965,21 @@ export function KanbanBoard() {
                           {...provided.droppableProps}
                           className="kanban-column-scroll flex-1 space-y-2 overflow-y-auto px-4 pb-4 pt-0"
                         >
-                          {getLeadsByStage(stage).map((lead, index) => {
-                            const countdown = getTransferCountdown(lead)
-
-                            return (
-                              <Draggable key={lead.id} draggableId={lead.id.toString()} index={index}>
-                                {(provided, snapshot) => (
-                                  <Card
-                                    ref={provided.innerRef}
-                                    {...provided.draggableProps}
-                                    {...provided.dragHandleProps}
-                                    className={`cursor-grab active:cursor-grabbing transition-all duration-200 ${
-                                      snapshot.isDragging
-                                        ? "shadow-2xl rotate-3 scale-105 bg-white border-blue-300 z-50"
-                                        : "hover:shadow-md hover:-translate-y-1"
-                                    } ${movingLead === lead.id ? "opacity-50" : ""}`}
-                                    onClick={() => {
-                                      if (!snapshot.isDragging) {
-                                        setSelectedLead(lead)
-                                      }
-                                    }}
-                                  >
-                                    <CardContent className="p-3">
-                                      <div className="space-y-2">
-                                        <div className="flex items-center justify-between">
-                                          <h4 className="font-medium text-sm text-gray-900 truncate flex-1">
-                                            {lead.nome_lead}
-                                          </h4>
-                                          <div className="flex items-center gap-1">
-                                            {movingLead === lead.id && (
-                                              <Loader2 className="h-3 w-3 animate-spin text-blue-500" />
-                                            )}
-                                            <Move className="h-3 w-3 text-gray-400 flex-shrink-0" />
-                                          </div>
-                                        </div>
-
-                                        {normalizeStage(lead.estagio_lead) === "transferidos" && countdown && (
-                                          <div
-                                            className={`flex items-center justify-between rounded-md border px-2 py-1 text-xs ${
-                                              countdown.expired
-                                                ? "border-red-200 bg-red-50 text-red-700"
-                                                : countdown.urgent
-                                                  ? "border-amber-200 bg-amber-50 text-amber-700"
-                                                  : "border-orange-200 bg-orange-50 text-orange-700"
-                                            }`}
-                                          >
-                                            <div className="flex items-center gap-1">
-                                              <Clock3 className="h-3 w-3" />
-                                              <span>Tempo restante</span>
-                                            </div>
-                                            <span className="font-semibold">{countdown.formatted}</span>
-                                          </div>
-                                        )}
-
-                                        <div
-                                          className="border border-gray-200 rounded p-1"
-                                          onClick={(e) => e.stopPropagation()}
-                                        >
-                                          <EditableValueField
-                                            leadId={lead.id}
-                                            currentValue={lead.valor || 0}
-                                            onValueUpdate={(newValue) => handleValueUpdate(lead.id, newValue)}
-                                          />
-                                        </div>
-
-                                        {lead.telefone && (
-                                          <div className="flex items-center justify-between gap-2">
-                                            <p className="text-xs text-gray-600 flex items-center gap-1">
-                                              <Phone className="h-3 w-3" />
-                                              {lead.telefone}
-                                            </p>
-
-                                            {normalizeStage(lead.estagio_lead) === "transferidos" && (
-                                              <Button
-                                                size="sm"
-                                                className="h-6 px-2 text-xs bg-blue-600 hover:bg-blue-700 text-white"
-                                                disabled={movingLead === lead.id}
-                                                onClick={(e) => {
-                                                  e.stopPropagation()
-                                                  handleAtenderLeadAction(lead.id)
-                                                }}
-                                              >
-                                                {movingLead === lead.id ? (
-                                                  <Loader2 className="h-3 w-3 animate-spin" />
-                                                ) : (
-                                                  "Atender"
-                                                )}
-                                              </Button>
-                                            )}
-                                          </div>
-                                        )}
-
-                                        {lead.veiculo_interesse && (
-                                          <p className="text-xs text-gray-600 flex items-center gap-1 truncate">
-                                            <Car className="h-3 w-3 flex-shrink-0" />
-                                            <span className="truncate">{lead.veiculo_interesse}</span>
-                                          </p>
-                                        )}
-
-                                        <div className="flex justify-between items-center">
-                                          {lead.origem && (
-                                            <Badge variant="outline" className="text-xs">
-                                              {lead.origem}
-                                            </Badge>
-                                          )}
-                                          {lead.vendedor && (
-                                            <span className="text-xs text-gray-500 truncate ml-2">{lead.vendedor}</span>
-                                          )}
-                                        </div>
-                                      </div>
-                                    </CardContent>
-                                  </Card>
-                                )}
-                              </Draggable>
-                            )
-                          })}
+                          {leadsByStage[stage].map((lead, index) => (
+                            <KanbanCard
+                              key={lead.id}
+                              lead={lead}
+                              index={index}
+                              movingLead={movingLead}
+                              onValueUpdate={handleValueUpdate}
+                              onAtender={handleAtenderLeadAction}
+                              onSelect={handleSelectLead}
+                            />
+                          ))}
 
                           {provided.placeholder}
 
-                          {getLeadsByStage(stage).length === 0 && (
+                          {leadsByStage[stage].length === 0 && (
                             <div className="text-center py-8 text-gray-400 border-2 border-dashed border-gray-200 rounded-lg">
                               <div className="text-xs">Nenhum lead neste estágio</div>
                               <div className="text-xs mt-1">Arraste leads aqui</div>
