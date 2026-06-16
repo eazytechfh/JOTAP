@@ -13,6 +13,7 @@ import {
   type DragEndEvent,
 } from "@dnd-kit/core"
 import { CSS } from "@dnd-kit/utilities"
+import { useVirtualizer } from "@tanstack/react-virtual"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -265,44 +266,23 @@ interface KanbanColumnProps {
   onSelect: (lead: Lead) => void
 }
 
-interface KanbanCardListProps {
-  leads: Lead[]
-  movingLead: number | null
-  onValueUpdate: (leadId: number, newValue: number) => void
-  onAtender: (leadId: number) => void
-  onSelect: (lead: Lead) => void
-}
-
-// Separado do KanbanColumn para não re-renderizar quando isOver muda
-const KanbanCardList = memo(function KanbanCardList({
-  leads, movingLead, onValueUpdate, onAtender, onSelect,
-}: KanbanCardListProps) {
-  return (
-    <>
-      {leads.map((lead) => (
-        <KanbanCard
-          key={lead.id}
-          lead={lead}
-          movingLead={movingLead}
-          onValueUpdate={onValueUpdate}
-          onAtender={onAtender}
-          onSelect={onSelect}
-        />
-      ))}
-      {leads.length === 0 && (
-        <div className="text-center py-8 text-gray-400 border-2 border-dashed border-gray-200 rounded-lg">
-          <div className="text-xs">Nenhum lead neste estágio</div>
-          <div className="text-xs mt-1">Arraste leads aqui</div>
-        </div>
-      )}
-    </>
-  )
-})
-
 const KanbanColumn = memo(function KanbanColumn({
   stage, leads, total, movingLead, onValueUpdate, onAtender, onSelect,
 }: KanbanColumnProps) {
+  const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null)
   const { setNodeRef, isOver } = useDroppable({ id: stage })
+
+  const setRefs = useCallback((el: HTMLDivElement | null) => {
+    setScrollEl(el)
+    setNodeRef(el)
+  }, [setNodeRef])
+
+  const virtualizer = useVirtualizer({
+    count: leads.length,
+    getScrollElement: () => scrollEl,
+    estimateSize: () => 138,
+    overscan: 5,
+  })
 
   return (
     <Card className={`flex h-full w-80 flex-shrink-0 flex-col transition-colors duration-150 ${
@@ -323,16 +303,44 @@ const KanbanColumn = memo(function KanbanColumn({
       </CardHeader>
 
       <CardContent
-        ref={setNodeRef}
-        className="kanban-column-scroll flex-1 space-y-2 overflow-y-auto px-4 pb-4 pt-0"
+        ref={setRefs}
+        className="kanban-column-scroll flex-1 overflow-y-auto px-4 pb-4 pt-0"
       >
-        <KanbanCardList
-          leads={leads}
-          movingLead={movingLead}
-          onValueUpdate={onValueUpdate}
-          onAtender={onAtender}
-          onSelect={onSelect}
-        />
+        {leads.length === 0 ? (
+          <div className="text-center py-8 text-gray-400 border-2 border-dashed border-gray-200 rounded-lg">
+            <div className="text-xs">Nenhum lead neste estágio</div>
+            <div className="text-xs mt-1">Arraste leads aqui</div>
+          </div>
+        ) : (
+          <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
+            {virtualizer.getVirtualItems().map((virtualItem) => {
+              const lead = leads[virtualItem.index]
+              return (
+                <div
+                  key={lead.id}
+                  data-index={virtualItem.index}
+                  ref={virtualizer.measureElement}
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    width: "100%",
+                    transform: `translateY(${virtualItem.start}px)`,
+                    paddingBottom: "8px",
+                  }}
+                >
+                  <KanbanCard
+                    lead={lead}
+                    movingLead={movingLead}
+                    onValueUpdate={onValueUpdate}
+                    onAtender={onAtender}
+                    onSelect={onSelect}
+                  />
+                </div>
+              )
+            })}
+          </div>
+        )}
       </CardContent>
     </Card>
   )
