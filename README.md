@@ -158,6 +158,12 @@ pnpm dev
 
 ## Histórico de Alterações
 
+### 2026-06-16 — Sprint 7: virtualização das colunas do Kanban
+- **Arquivo alterado:** `components/kanban-board.tsx`; **Pacote adicionado:** `@tanstack/react-virtual`
+- **Problema:** Com 750+ cards na coluna "Em Negociação", o DOM renderizava todos os cards simultaneamente — scroll lento, re-renders pesados.
+- **Fix:** `useVirtualizer` do `@tanstack/react-virtual` em cada `KanbanColumn`. Apenas ~15 cards ficam no DOM por vez (os visíveis na viewport + `overscan: 5`). Cards posicionados com `position: absolute` + `translateY(virtualItem.start)`. `measureElement` mede altura real de cada card para suportar alturas variáveis.
+- **Cuidados futuros:** O scroll do virtualizer depende do elemento `<CardContent>` ter `overflow-y: auto` e altura definida (flex). Se mudar o layout da coluna, verificar se o scroll ainda funciona. O `estimateSize: () => 138` é uma estimativa inicial — o `measureElement` corrige após o primeiro render.
+
 ### 2026-06-16 — Sprint 6: migração @hello-pangea/dnd → @dnd-kit
 - **Arquivo alterado:** `components/kanban-board.tsx`
 - **Problema raiz:** `@hello-pangea/dnd` fazia broadcast de snapshot para todas as Droppables durante qualquer drag — todas as 8 colunas e ~1000 cards re-renderizavam a cada movimento do mouse.
