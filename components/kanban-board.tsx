@@ -436,14 +436,14 @@ export function KanbanBoard() {
     }
 
     if (filterDataInicio) {
-      const inicio = new Date(filterDataInicio)
-      inicio.setHours(0, 0, 0, 0)
+      const [y, m, d] = filterDataInicio.split("-").map(Number)
+      const inicio = new Date(y, m - 1, d, 0, 0, 0, 0)
       filtered = filtered.filter((lead) => new Date(lead.created_at) >= inicio)
     }
 
     if (filterDataFim) {
-      const fim = new Date(filterDataFim)
-      fim.setHours(23, 59, 59, 999)
+      const [y, m, d] = filterDataFim.split("-").map(Number)
+      const fim = new Date(y, m - 1, d, 23, 59, 59, 999)
       filtered = filtered.filter((lead) => new Date(lead.created_at) <= fim)
     }
 

@@ -158,6 +158,12 @@ pnpm dev
 
 ## Histórico de Alterações
 
+### 2026-06-16 — Correção do filtro de data no Kanban
+- **Arquivo alterado:** `components/kanban-board.tsx`
+- **Problema:** `new Date("2026-06-17")` (string YYYY-MM-DD do `<input type="date">`) é interpretado como UTC midnight. No Brasil (UTC-3), isso corresponde ao dia anterior às 21h local — `setHours(0,0,0,0)` então movia o início para meia-noite do dia errado. Efeito: "até 16/06" cortava no dia 15, e "de 17/06 até 17/06" mostrava leads de 16/06.
+- **Fix:** Substituído `new Date(dateString)` por `new Date(year, month-1, day)`, que cria a data no fuso local sem ambiguidade UTC.
+- **Cuidados futuros:** Em JavaScript, `new Date("YYYY-MM-DD")` **sempre** é UTC. Para datas de input tipo date, usar sempre `new Date(year, month-1, day)` (com `split("-")`). Nunca usar `new Date(string)` para comparar com timestamps locais.
+
 ### 2026-06-16 — Sprint 7: virtualização das colunas do Kanban
 - **Arquivo alterado:** `components/kanban-board.tsx`; **Pacote adicionado:** `@tanstack/react-virtual`
 - **Problema:** Com 750+ cards na coluna "Em Negociação", o DOM renderizava todos os cards simultaneamente — scroll lento, re-renders pesados.
