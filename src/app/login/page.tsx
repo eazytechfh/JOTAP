@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 
@@ -10,6 +10,16 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const storageLogo = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/logos/jotap.png`;
+  const [logoUrl, setLogoUrl] = useState(storageLogo);
+
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.rpc('get_branding').single().then(({ data }) => {
+      const configuredLogo = (data as { logo_url?: string | null } | null)?.logo_url;
+      if (configuredLogo) setLogoUrl(configuredLogo);
+    });
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -37,7 +47,14 @@ export default function LoginPage() {
     <main className="flex min-h-screen items-center justify-center bg-background">
       <div className="w-full max-w-sm rounded-xl bg-card p-8 shadow-sm">
         <div className="mb-6 text-center">
-          <h1 className="text-2xl font-bold text-foreground">EazyClick</h1>
+          {/* eslint-disable-next-line @next/next/no-img-element -- URL dinâmica do branding no Storage */}
+          <img
+            src={logoUrl}
+            alt="JOTAP Veículos"
+            onError={() => setLogoUrl('/jotap.png')}
+            className="mx-auto mb-4 h-24 w-full object-contain"
+          />
+          <h1 className="text-2xl font-bold text-foreground">JOTAP Veículos</h1>
           <p className="text-sm text-gray-500">CRM</p>
         </div>
 
@@ -53,7 +70,7 @@ export default function LoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary"
-              placeholder="voce@empresa.com"
+              placeholder="voce@jotapveiculos.com.br"
             />
           </div>
 

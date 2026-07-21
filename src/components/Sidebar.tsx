@@ -125,7 +125,7 @@ export function Sidebar({ userName, userCargo, logoUrl }: SidebarProps) {
             <img src={logoUrl} alt="Logo" className="h-full w-full object-contain" />
           </div>
         )}
-        <h1 className="text-lg font-bold text-foreground">EazyClick</h1>
+        <h1 className="text-lg font-bold text-foreground">JOTAP Veículos</h1>
         <p className="text-xs text-gray-500">CRM</p>
       </div>
 

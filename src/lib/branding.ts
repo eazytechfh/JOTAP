@@ -9,9 +9,9 @@ export interface Branding {
 }
 
 const DEFAULT_BRANDING: Branding = {
-  logo_url: null,
-  cor_primaria: '#111827',
-  cor_secundaria: '#3b82f6',
+  logo_url: '/jotap.png',
+  cor_primaria: '#c81e2b',
+  cor_secundaria: '#1769aa',
   cor_texto: '#111827',
   cor_fundo: '#f5f6f8',
 };

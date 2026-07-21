@@ -37,6 +37,7 @@ async function main() {
     password,
     email_confirm: true,
     user_metadata: { nome: nome || 'Admin Master', cargo: 'admin_master' },
+    app_metadata: { cargo: 'admin_master' },
   });
 
   if (error) {

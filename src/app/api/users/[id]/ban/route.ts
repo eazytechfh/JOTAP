@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { canManageUsers } from '@/lib/auth/roles';
 
 export async function POST(request: Request, { params }: { params: { id: string } }) {
   const supabase = createClient();
@@ -17,7 +18,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
     .single();
 
   const cargo = (profile as { cargo: string } | null)?.cargo;
-  if (cargo !== 'admin_master' && cargo !== 'admin' && cargo !== 'gerente') {
+  if (!canManageUsers(cargo)) {
     return NextResponse.json({ error: 'Permissão insuficiente.' }, { status: 403 });
   }
 
@@ -49,10 +50,8 @@ export async function POST(request: Request, { params }: { params: { id: string 
     return NextResponse.json({ error: profileError.message }, { status: 400 });
   }
 
-  // VENDEDORES não tem FK para profiles (é uma tabela separada, vinculada só pelo nome). Ao
-  // desativar um vendedor, removemos o registro de lá para ele sair da fila de atendimento
-  // (uazapi/bot não distribui mais leads pra ele). Ao reativar, recriamos o registro do zero
-  // sempre como "espera" — ele entra no fim da fila, não na posição que tinha antes.
+  // VENDEDORES é operacional e guarda contagem/histórico. Nunca removemos nem recriamos a linha:
+  // apenas alteramos os campos de disponibilidade adicionados pela migration JOTAP.
   const { data: targetProfile } = await admin
     .from('profiles')
     .select('cargo, nome')
@@ -63,26 +62,14 @@ export async function POST(request: Request, { params }: { params: { id: string 
   const targetNome = (targetProfile as { cargo: string; nome: string | null } | null)?.nome;
 
   if (targetCargo === 'vendedor' && targetNome) {
-    if (desativar) {
-      await admin.from('VENDEDORES').delete().eq('vendedor', targetNome);
-    } else {
-      const { data: existente } = await admin
-        .from('VENDEDORES')
-        .select('id')
-        .eq('vendedor', targetNome)
-        .maybeSingle();
-
-      if (!existente) {
-        const { data: authUser } = await admin.auth.admin.getUserById(params.id);
-        const telefone = (authUser.user?.user_metadata as { telefone?: string } | undefined)?.telefone ?? null;
-
-        await admin.from('VENDEDORES').insert({
-          vendedor: targetNome,
-          telefone,
-          atender: 'espera',
-          quantos_lead: 0,
-        });
-      }
+    const { error: sellerError } = await admin
+      .from('VENDEDORES')
+      .update({ ativo: !desativar, atender: desativar ? 'inativo' : 'espera' })
+      .eq('vendedor', targetNome);
+    if (sellerError) {
+      await admin.auth.admin.updateUserById(params.id, { ban_duration: desativar ? 'none' : '876000h' });
+      await admin.from('profiles').update({ desativado: !desativar }).eq('id', params.id);
+      return NextResponse.json({ error: sellerError.message }, { status: 400 });
     }
   }
 

@@ -3,8 +3,8 @@ import './globals.css';
 import { fetchBranding } from '@/lib/branding';
 
 export const metadata: Metadata = {
-  title: 'EazyClick CRM',
-  description: 'CRM para concessionárias de veículos',
+  title: 'JOTAP Veículos CRM',
+  description: 'CRM da JOTAP Veículos',
 };
 
 export default async function RootLayout({

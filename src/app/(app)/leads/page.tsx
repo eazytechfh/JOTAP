@@ -12,6 +12,7 @@ import { LeadFiltersBar } from '@/components/LeadFiltersBar';
 import { NovoLeadModal } from '@/components/NovoLeadModal';
 import { LeadDrawer } from '@/components/LeadDrawer';
 import { useLeadFilters } from '@/hooks/useLeadFilters';
+import { deduplicateLeads, fetchAllLeads } from '@/lib/leads';
 
 function getEstagioConfig(estagio: string) {
   const key = estagio.toLowerCase().trim();
@@ -36,6 +37,8 @@ export default function LeadsPage() {
   const [loading, setLoading] = useState(true);
   const [modalNovoLeadAberto, setModalNovoLeadAberto] = useState(false);
   const [leadSelecionado, setLeadSelecionado] = useState<BaseDeLeads | null>(null);
+  const [duplicateCount, setDuplicateCount] = useState(0);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const filters = useLeadFilters(leads);
   const { leadsFiltrados } = filters;
 
@@ -44,21 +47,31 @@ export default function LeadsPage() {
 
     async function fetchLeads() {
       setLoading(true);
+      setLoadError(null);
       const supabase = createClient();
-      const { data, error } = await supabase
-        .from('BASE_DE_LEADS')
-        .select(
-          'id, id_empresa, nome_lead, telefone, email, origem, vendedor, veiculo_interesse, resumo_qualificacao, estagio_lead, resumo_comercial, created_at, updated_at, valor, observacao_vendedor, bot_ativo, "Etapa", "QuemEnviouMsg", "UltimaMensagem", StatusDeFollow:"Status de Follow", "Transferencia", PesquisaDeSatisfacao:"Pesquisa de satisfação", IdContatoClick:"ID CONTATO CLICK", lid, DataEHora:"Data e Hora", cpf, data_nascimento, score_serasa'
-        )
-        .order('created_at', { ascending: false });
-
-      if (!isMounted) return;
-
-      if (error) {
-        console.error('Erro ao buscar leads:', error.message);
+      try {
+        const allLeads = await fetchAllLeads(async (from, to) => {
+          const { data, error } = await supabase
+            .from('BASE_DE_LEADS')
+            .select(
+              'id, id_empresa, nome_lead, telefone, email, origem, vendedor, veiculo_interesse, resumo_qualificacao, estagio_lead, resumo_comercial, created_at, updated_at, valor, observacao_vendedor, bot_ativo, "Etapa", "QuemEnviouMsg", "UltimaMensagem", StatusDeFollow:"Status de Follow", "Transferencia", PesquisaDeSatisfacao:"Pesquisa de satisfação", cpf, data_nascimento, score_serasa'
+            )
+            .order('created_at', { ascending: false })
+            .order('id', { ascending: false })
+            .range(from, to);
+          if (error) throw new Error(error.message);
+          return (data as unknown as BaseDeLeads[]) ?? [];
+        });
+        if (!isMounted) return;
+        const deduplicated = deduplicateLeads(allLeads);
+        setLeads(deduplicated.leads);
+        setDuplicateCount(deduplicated.duplicateCount);
+      } catch (error) {
+        if (!isMounted) return;
+        console.error('Erro ao buscar leads:', error instanceof Error ? error.message : 'Erro desconhecido');
+        setLoadError(error instanceof Error ? error.message : 'Não foi possível carregar os leads.');
         setLeads([]);
-      } else {
-        setLeads((data as unknown as BaseDeLeads[]) ?? []);
+        setDuplicateCount(0);
       }
       setLoading(false);
     }
@@ -116,6 +129,8 @@ export default function LeadsPage() {
         <div>
           <h1 className="text-2xl font-bold text-foreground">Leads</h1>
           <p className="text-sm text-gray-500">{leadsFiltrados.length} lead(s) encontrado(s)</p>
+          <p className="text-xs text-gray-400">{duplicateCount} lead(s) duplicado(s) removido(s) da exibição.</p>
+          {loadError && <p className="mt-1 text-xs text-red-600">Erro ao carregar leads: {loadError}</p>}
         </div>
         <div className="flex items-center gap-2">
           <button

@@ -45,9 +45,9 @@ export default function EstoquePage() {
       setLoading(true);
       const supabase = createClient();
       const { data, error } = await supabase
-        .from('ESTOQUE')
+        .from('estoque')
         .select(
-          'id, marca, modelo, ano, cor, combustivel, quilometragem, status, created_at, updated_at, placa, "link imagem 0", valor, motor, "link imagem 1", "link imagem 2", "link imagem 3", "ID VEICULO", tipo'
+          'id, marca, modelo, ano, cor, combustivel, quilometragem, status, created_at, updated_at, placa, "link imagem 0", valor, "link imagem 1", "link imagem 2", "link imagem 3", "ID VEICULO", tipo'
         )
         .order('created_at', { ascending: false });
 
@@ -75,7 +75,7 @@ export default function EstoquePage() {
             placa: r.placa,
             linkImagem0: r['link imagem 0'],
             valor: r.valor,
-            motor: r.motor,
+            motor: null,
             linkImagem1: r['link imagem 1'],
             linkImagem2: r['link imagem 2'],
             linkImagem3: r['link imagem 3'],

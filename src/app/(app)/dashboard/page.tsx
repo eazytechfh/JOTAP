@@ -18,10 +18,12 @@ import { format, subDays, startOfDay, endOfDay, isWithinInterval } from 'date-fn
 import { ptBR } from 'date-fns/locale';
 import { createClient } from '@/lib/supabase/client';
 import type { BaseDeLeads } from '@/types/database';
+import { deduplicateLeads, fetchAllLeads } from '@/lib/leads';
 import { KpiCard } from '@/components/KpiCard';
 import { PillFilter, type PillOption } from '@/components/PillFilter';
 import { ESTAGIO_CONFIG } from '@/components/StatusBadge';
 import { isDentroExpediente } from '@/lib/expediente';
+import { sumCurrentNegotiationValue } from '@/lib/dashboard-metrics';
 
 type Periodo = 'hoje' | 'ontem' | '7d' | '30d' | '90d';
 
@@ -89,28 +91,39 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [periodo, setPeriodo] = useState<Periodo>('7d');
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
+  const [duplicateCount, setDuplicateCount] = useState(0);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
 
     async function fetchLeads() {
       setLoading(true);
+      setLoadError(null);
       const supabase = createClient();
-      const { data, error } = await supabase
-        .from('BASE_DE_LEADS')
-        .select(
-          'id, id_empresa, nome_lead, telefone, email, origem, vendedor, veiculo_interesse, resumo_qualificacao, estagio_lead, resumo_comercial, created_at, updated_at, valor, observacao_vendedor, bot_ativo, "Etapa", "QuemEnviouMsg", "UltimaMensagem", StatusDeFollow:"Status de Follow", "Transferencia", PesquisaDeSatisfacao:"Pesquisa de satisfação", IdContatoClick:"ID CONTATO CLICK", lid, DataEHora:"Data e Hora"'
-        )
-        .order('created_at', { ascending: false });
-
-      if (!isMounted) return;
-
-      if (error) {
-        // Em ambiente sem Supabase real configurado, apenas registra o erro e segue com lista vazia.
-        console.error('Erro ao buscar leads:', error.message);
+      try {
+        const allLeads = await fetchAllLeads(async (from, to) => {
+          const { data, error } = await supabase
+            .from('BASE_DE_LEADS')
+            .select(
+              'id, id_empresa, nome_lead, telefone, email, origem, vendedor, veiculo_interesse, resumo_qualificacao, estagio_lead, resumo_comercial, created_at, updated_at, valor, observacao_vendedor, bot_ativo, "Etapa", "QuemEnviouMsg", "UltimaMensagem", StatusDeFollow:"Status de Follow", "Transferencia", PesquisaDeSatisfacao:"Pesquisa de satisfação"'
+            )
+            .order('created_at', { ascending: false })
+            .order('id', { ascending: false })
+            .range(from, to);
+          if (error) throw new Error(error.message);
+          return (data as unknown as BaseDeLeads[]) ?? [];
+        });
+        if (!isMounted) return;
+        const deduplicated = deduplicateLeads(allLeads);
+        setLeads(deduplicated.leads);
+        setDuplicateCount(deduplicated.duplicateCount);
+      } catch (error) {
+        if (!isMounted) return;
+        console.error('Erro ao buscar leads:', error instanceof Error ? error.message : 'Erro desconhecido');
+        setLoadError(error instanceof Error ? error.message : 'Não foi possível carregar o dashboard.');
         setLeads([]);
-      } else {
-        setLeads((data as unknown as BaseDeLeads[]) ?? []);
+        setDuplicateCount(0);
       }
 
       setUpdatedAt(new Date());
@@ -153,12 +166,7 @@ export default function DashboardPage() {
   const taxaConversao = totalLeads > 0 ? (fechados / totalLeads) * 100 : 0;
   const taxaConversaoAnterior = totalLeadsAnterior > 0 ? (fechadosAnterior / totalLeadsAnterior) * 100 : 0;
 
-  const valorEmNegociacao = leadsNoPeriodo
-    .filter((l) => (l.estagio_lead ?? '').toLowerCase() === 'em_negociacao')
-    .reduce((sum, l) => sum + (l.valor ?? 0), 0);
-  const valorEmNegociacaoAnterior = leadsPeriodoAnterior
-    .filter((l) => (l.estagio_lead ?? '').toLowerCase() === 'em_negociacao')
-    .reduce((sum, l) => sum + (l.valor ?? 0), 0);
+  const valorEmNegociacao = sumCurrentNegotiationValue(leads);
 
   const agora = new Date();
   const dentroExpediente = isDentroExpediente(agora);
@@ -253,6 +261,8 @@ export default function DashboardPage() {
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Visão Geral de Leads</h1>
+          <p className="text-xs text-gray-400">{duplicateCount} lead(s) duplicado(s) removido(s) da exibição.</p>
+          {loadError && <p className="mt-1 text-xs text-red-600">Erro ao carregar dashboard: {loadError}</p>}
           <p className="text-sm text-gray-500">
             {format(start, "dd 'de' MMM", { locale: ptBR })} – {format(end, "dd 'de' MMM", { locale: ptBR })}
             {updatedAt && (
@@ -284,11 +294,12 @@ export default function DashboardPage() {
               dotColor="#22c55e"
             />
             <KpiCard
-              label="Valor em Negociação"
+              label="Valor em Negociação — carteira atual"
               value={currencyFormatter.format(valorEmNegociacao)}
-              variation={pctChange(valorEmNegociacao, valorEmNegociacaoAnterior)}
               dotColor="#a855f7"
-            />
+            >
+              <p className="mt-1 text-xs text-gray-500">Todos os leads atualmente em negociação, independentemente da data de entrada.</p>
+            </KpiCard>
             <KpiCard
               label="Expediente"
               value={dentroExpediente ? 'Dentro' : 'Fora'}

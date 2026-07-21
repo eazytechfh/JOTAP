@@ -13,6 +13,7 @@ import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-
 import { CSS } from '@dnd-kit/utilities';
 import { createClient } from '@/lib/supabase/client';
 import type { BaseDeLeads } from '@/types/database';
+import { deduplicateLeads, fetchAllLeads } from '@/lib/leads';
 import { Avatar } from '@/components/Avatar';
 import { LeadDrawer } from '@/components/LeadDrawer';
 import { LeadFiltersBar } from '@/components/LeadFiltersBar';
@@ -205,6 +206,8 @@ function Column({ id, label, color, leads, onOpenLead, agora, statusAtendimentoP
 export default function PipelinePage() {
   const [leads, setLeads] = useState<BaseDeLeads[]>([]);
   const [loading, setLoading] = useState(true);
+  const [duplicateCount, setDuplicateCount] = useState(0);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [leadSelecionado, setLeadSelecionado] = useState<BaseDeLeads | null>(null);
   const [nomeUsuario, setNomeUsuario] = useState<string>('Usuário');
@@ -259,21 +262,31 @@ export default function PipelinePage() {
 
     async function fetchLeads() {
       setLoading(true);
+      setLoadError(null);
       const supabase = createClient();
-      const { data, error } = await supabase
-        .from('BASE_DE_LEADS')
-        .select(
-          'id, id_empresa, nome_lead, telefone, email, origem, vendedor, veiculo_interesse, resumo_qualificacao, estagio_lead, resumo_comercial, created_at, updated_at, valor, observacao_vendedor, bot_ativo, "Etapa", "QuemEnviouMsg", "UltimaMensagem", StatusDeFollow:"Status de Follow", "Transferencia", PesquisaDeSatisfacao:"Pesquisa de satisfação", IdContatoClick:"ID CONTATO CLICK", lid, DataEHora:"Data e Hora", cpf, data_nascimento, score_serasa, follow_manual, negociacao_expira_em, negociacao_notificado_em, negociacao_extensoes'
-        )
-        .order('created_at', { ascending: false });
-
-      if (!isMounted) return;
-
-      if (error) {
-        console.error('Erro ao buscar leads:', error.message);
+      try {
+        const allLeads = await fetchAllLeads(async (from, to) => {
+          const { data, error } = await supabase
+            .from('BASE_DE_LEADS')
+            .select(
+              'id, id_empresa, nome_lead, telefone, email, origem, vendedor, veiculo_interesse, resumo_qualificacao, estagio_lead, resumo_comercial, created_at, updated_at, valor, observacao_vendedor, bot_ativo, "Etapa", "QuemEnviouMsg", "UltimaMensagem", StatusDeFollow:"Status de Follow", "Transferencia", PesquisaDeSatisfacao:"Pesquisa de satisfação", cpf, data_nascimento, score_serasa, follow_manual, negociacao_expira_em, negociacao_notificado_em, negociacao_extensoes'
+            )
+            .order('created_at', { ascending: false })
+            .order('id', { ascending: false })
+            .range(from, to);
+          if (error) throw new Error(error.message);
+          return (data as unknown as BaseDeLeads[]) ?? [];
+        });
+        if (!isMounted) return;
+        const deduplicated = deduplicateLeads(allLeads);
+        setLeads(deduplicated.leads);
+        setDuplicateCount(deduplicated.duplicateCount);
+      } catch (error) {
+        if (!isMounted) return;
+        console.error('Erro ao buscar leads:', error instanceof Error ? error.message : 'Erro desconhecido');
+        setLoadError(error instanceof Error ? error.message : 'Não foi possível carregar o pipeline.');
         setLeads([]);
-      } else {
-        setLeads((data as unknown as BaseDeLeads[]) ?? []);
+        setDuplicateCount(0);
       }
       setLoading(false);
     }
@@ -416,6 +429,8 @@ export default function PipelinePage() {
         <p className="text-sm text-gray-500">
           {leadsFiltrados.length} lead(s) exibido(s). Arraste os cards entre as etapas do funil
         </p>
+        <p className="text-xs text-gray-400">{duplicateCount} lead(s) duplicado(s) removido(s) da exibição.</p>
+        {loadError && <p className="mt-1 text-xs text-red-600">Erro ao carregar pipeline: {loadError}</p>}
       </div>
 
       {errorMessage && (
