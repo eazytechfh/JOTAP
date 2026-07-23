@@ -30,7 +30,8 @@ export interface BaseDeLeads {
   updated_at: string | null;
   valor: number | null;
   observacao_vendedor: string | null;
-  bot_ativo: string | null;
+  bot_ativo: string;
+  bot_ativo_alterado_em: string | null;
   /** Coluna real: "Etapa" */
   Etapa: string | null;
   /** Coluna real: "QuemEnviouMsg" */

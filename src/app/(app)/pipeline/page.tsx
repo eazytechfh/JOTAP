@@ -269,7 +269,7 @@ export default function PipelinePage() {
           const { data, error } = await supabase
             .from('BASE_DE_LEADS')
             .select(
-              'id, id_empresa, nome_lead, telefone, email, origem, vendedor, veiculo_interesse, resumo_qualificacao, estagio_lead, resumo_comercial, created_at, updated_at, valor, observacao_vendedor, bot_ativo, "Etapa", "QuemEnviouMsg", "UltimaMensagem", StatusDeFollow:"Status de Follow", "Transferencia", PesquisaDeSatisfacao:"Pesquisa de satisfação", cpf, data_nascimento, score_serasa, follow_manual, negociacao_expira_em, negociacao_notificado_em, negociacao_extensoes'
+              'id, id_empresa, nome_lead, telefone, email, origem, vendedor, veiculo_interesse, resumo_qualificacao, estagio_lead, resumo_comercial, created_at, updated_at, valor, observacao_vendedor, bot_ativo, bot_ativo_alterado_em, "Etapa", "QuemEnviouMsg", "UltimaMensagem", StatusDeFollow:"Status de Follow", "Transferencia", PesquisaDeSatisfacao:"Pesquisa de satisfação", cpf, data_nascimento, score_serasa, follow_manual, negociacao_expira_em, negociacao_notificado_em, negociacao_extensoes'
             )
             .order('created_at', { ascending: false })
             .order('id', { ascending: false })
@@ -476,6 +476,10 @@ export default function PipelinePage() {
           onUpdated={(atualizado) => {
             setLeadSelecionado(atualizado);
             setLeads((prev) => prev.map((l) => (l.id === atualizado.id ? atualizado : l)));
+          }}
+          onDeleted={(leadId) => {
+            setLeads((leadsAtuais) => leadsAtuais.filter((l) => l.id !== leadId));
+            setLeadSelecionado(null);
           }}
         />
       )}
