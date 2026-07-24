@@ -4,6 +4,9 @@ import { useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
 import { createClient } from '@/lib/supabase/client';
 import type { Estoque } from '@/types/database';
+import { AutomotiveLoading } from '@/components/AutomotiveLoading';
+
+const STATUS_ESTOQUE = ['Disponível', 'Indisponível', 'Vendido'] as const;
 
 function getImagens(veiculo: Estoque): string[] {
   return [veiculo.linkImagem0, veiculo.linkImagem1, veiculo.linkImagem2, veiculo.linkImagem3].filter(
@@ -34,7 +37,9 @@ export default function EstoquePage() {
   const [loading, setLoading] = useState(true);
   const [busca, setBusca] = useState('');
   const [marcaFiltro, setMarcaFiltro] = useState('todas');
-  const [statusFiltro, setStatusFiltro] = useState('todos');
+  const [statusFiltro, setStatusFiltro] = useState('Disponível');
+  const [salvandoStatus, setSalvandoStatus] = useState(false);
+  const [erroStatus, setErroStatus] = useState<string | null>(null);
   const [selecionado, setSelecionado] = useState<Estoque | null>(null);
   const [imagemIndex, setImagemIndex] = useState(0);
 
@@ -124,6 +129,21 @@ export default function EstoquePage() {
     setImagemIndex(0);
   }
 
+  async function atualizarStatus(status: (typeof STATUS_ESTOQUE)[number]) {
+    if (!selecionado) return;
+    setSalvandoStatus(true);
+    setErroStatus(null);
+    const { data, error } = await createClient().from('estoque').update({ status }).eq('id', selecionado.id).select('id, status').single();
+    setSalvandoStatus(false);
+    if (error || data?.status !== status) {
+      setErroStatus('Não foi possível alterar o status do veículo.');
+      return;
+    }
+    const atualizado = { ...selecionado, status };
+    setSelecionado(atualizado);
+    setVeiculos((prev) => prev.map((item) => item.id === atualizado.id ? atualizado : item));
+  }
+
   const imagensModal = selecionado ? getImagens(selecionado) : [];
 
   return (
@@ -159,7 +179,7 @@ export default function EstoquePage() {
           className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
         >
           <option value="todos">Todos os status</option>
-          {statusDisponiveis.map((s) => (
+          {Array.from(new Set([...STATUS_ESTOQUE, ...statusDisponiveis])).map((s) => (
             <option key={s} value={s}>
               {s}
             </option>
@@ -168,7 +188,7 @@ export default function EstoquePage() {
       </div>
 
       {loading ? (
-        <p className="text-sm text-gray-500">Carregando...</p>
+        <AutomotiveLoading label="Carregando estoque" />
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {veiculosFiltrados.map((veiculo) => {
@@ -274,6 +294,15 @@ export default function EstoquePage() {
             </p>
             <p className="text-sm text-gray-700">Motor: {selecionado.motor ?? '—'}</p>
             <p className="mt-2 text-lg font-bold text-foreground">{selecionado.valor ?? '—'}</p>
+            <div className="mt-4 border-t pt-4">
+              <p className="text-sm font-medium text-gray-700">Status do veículo</p>
+              <div className="mt-2 grid grid-cols-3 gap-2">
+                {STATUS_ESTOQUE.map((status) => (
+                  <button key={status} type="button" disabled={salvandoStatus || selecionado.status === status} onClick={() => atualizarStatus(status)} className="rounded-lg border px-2 py-2 text-xs font-medium disabled:bg-gray-100 disabled:opacity-60">{status}</button>
+                ))}
+              </div>
+              {erroStatus && <p role="status" className="mt-2 text-xs text-red-600">{erroStatus}</p>}
+            </div>
 
             <button
               type="button"

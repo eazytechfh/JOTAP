@@ -62,6 +62,7 @@ export function LeadDrawer({
   const [vendedores, setVendedores] = useState<Vendedor[]>([]);
   const [historico, setHistorico] = useState<LeadHistoricoEstagio[]>([]);
 
+  const [logs, setLogs] = useState<Array<{ id: number; acao: string; responsavel_nome: string | null; detalhes: { campos_alterados?: string[] } | null; created_at: string }>>([]);
   const [observacao, setObservacao] = useState(lead.observacao_vendedor ?? '');
   const [salvandoObservacao, setSalvandoObservacao] = useState(false);
   const [mensagemObservacao, setMensagemObservacao] = useState<string | null>(null);
@@ -97,7 +98,7 @@ export function LeadDrawer({
     let isMounted = true;
     async function fetchDados() {
       const supabase = createClient();
-      const [{ data: todasEtiquetas }, { data: doLead }, { data: vendedoresData }, { data: historicoData }] =
+      const [{ data: todasEtiquetas }, { data: doLead }, { data: vendedoresData }, { data: historicoData }, { data: logsData }] =
         await Promise.all([
           supabase.from('etiquetas').select('id, nome, cor, created_at').order('nome'),
           supabase.from('lead_etiquetas').select('id_etiqueta').eq('id_lead', lead.id),
@@ -107,12 +108,14 @@ export function LeadDrawer({
             .select('id, id_lead, estagio_anterior, estagio_novo, usuario, created_at')
             .eq('id_lead', lead.id)
             .order('created_at', { ascending: false }),
+          supabase.from('lead_logs').select('id, acao, responsavel_nome, detalhes, created_at').eq('id_lead', lead.id).order('created_at', { ascending: false }),
         ]);
       if (!isMounted) return;
       setEtiquetas((todasEtiquetas as Etiqueta[]) ?? []);
       setEtiquetasDoLead(new Set(((doLead as { id_etiqueta: number }[]) ?? []).map((e) => e.id_etiqueta)));
       setVendedores((vendedoresData as Vendedor[]) ?? []);
       setHistorico((historicoData as LeadHistoricoEstagio[]) ?? []);
+      setLogs((logsData as typeof logs) ?? []);
     }
     fetchDados();
     return () => {
@@ -166,6 +169,8 @@ export function LeadDrawer({
     setMensagemObservacao('Observação salva com sucesso');
     mutacaoEmAndamentoRef.current.liberar();
   }
+
+  const ultimoLogObservacao = logs.find((item) => item.acao.startsWith('observacao_'));
 
   async function alternarBot() {
     if (!mutacaoEmAndamentoRef.current.tentarAdquirir()) return;
@@ -528,6 +533,11 @@ export function LeadDrawer({
                 {mensagemObservacao}
               </p>
             )}
+            {ultimoLogObservacao && (
+              <p className="mt-2 text-xs text-gray-500">
+                {ultimoLogObservacao.acao === 'observacao_adicionada' ? 'Adicionada' : 'Alterada'} por {ultimoLogObservacao.responsavel_nome ?? 'Usuário desconhecido'} em {new Date(ultimoLogObservacao.created_at).toLocaleString('pt-BR')}
+              </p>
+            )}
           </section>
 
           <section>
@@ -537,7 +547,7 @@ export function LeadDrawer({
             {historico.length === 0 ? (
               <p className="text-xs text-gray-400">Nenhuma movimentação registrada ainda.</p>
             ) : (
-              <ul className="space-y-2">
+              <ul className="max-h-64 space-y-2 overflow-y-auto pr-1">
                 {historico.map((item) => (
                   <li key={item.id} className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
                     <div className="flex items-center justify-between">
@@ -550,6 +560,21 @@ export function LeadDrawer({
                       </p>
                     </div>
                     <p className="mt-0.5 text-xs text-gray-500">{item.usuario ?? 'Usuário desconhecido'}</p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section>
+            <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400">Logs gerais</h3>
+            {logs.length === 0 ? <p className="text-xs text-gray-400">Nenhuma ação registrada ainda.</p> : (
+              <ul className="max-h-64 space-y-2 overflow-y-auto pr-1">
+                {logs.map((item) => (
+                  <li key={item.id} className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+                    <div className="flex justify-between gap-3"><p className="text-xs font-medium text-gray-800">{item.acao.replaceAll('_', ' ')}</p><time className="shrink-0 text-xs text-gray-400">{new Date(item.created_at).toLocaleString('pt-BR')}</time></div>
+                    <p className="mt-0.5 text-xs text-gray-500">{item.responsavel_nome ?? 'Sistema/automação'}</p>
+                    {item.detalhes?.campos_alterados?.length ? <p className="mt-1 text-xs text-gray-400">Campos: {item.detalhes.campos_alterados.join(', ')}</p> : null}
                   </li>
                 ))}
               </ul>

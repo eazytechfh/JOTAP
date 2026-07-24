@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server';
 import { Sidebar } from '@/components/Sidebar';
 import { fetchBranding } from '@/lib/branding';
 import { NegociacaoTimerWatcher } from '@/components/NegociacaoTimerWatcher';
+import { LeadAssignedWatcher } from '@/components/LeadAssignedWatcher';
 import type { Profile } from '@/types/database';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -28,6 +29,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <Sidebar userName={userName} userCargo={userCargo} logoUrl={branding.logo_url} />
       <main className="min-h-0 min-w-0 flex-1 overflow-y-auto p-8">{children}</main>
       {userData.user && <NegociacaoTimerWatcher userCargo={userCargo} />}
+      {userData.user && <LeadAssignedWatcher sellerName={userName} />}
     </div>
   );
 }

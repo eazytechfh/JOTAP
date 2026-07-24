@@ -11,6 +11,21 @@
   --color-secundaria: #3b82f6;
 }
 
+@keyframes automotive-drive { 0%,100% { transform: translateX(-8px); } 50% { transform: translateX(8px); } }
+.automotive-loading { animation: automotive-drive 1s ease-in-out infinite; }
+.sale-celebration { animation: sale-fade-in 240ms ease-out both; }
+.sale-kicker { border: 1px solid rgb(56 189 248 / 45%); border-radius: 9999px; background: rgb(14 165 233 / 12%); padding: .4rem .9rem; color: #7dd3fc; font-size: .68rem; font-weight: 800; letter-spacing: .24em; }
+.sale-car-stage { position: relative; width: min(88vw, 35rem); height: 15.5rem; }
+.sale-car { position: relative; z-index: 2; width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 16px 22px rgb(0 0 0 / 55%)); }
+.sale-car-right-to-left { animation: sale-car-right-to-left 5s cubic-bezier(.22, .72, .25, 1) both; }
+.sale-car-glow { position: absolute; inset: 48% 8% 3%; border-radius: 9999px; background: linear-gradient(90deg, transparent, rgb(56 189 248 / 55%), rgb(245 158 11 / 45%), transparent); filter: blur(24px); animation: sale-glow 1.4s ease-in-out infinite alternate; }
+.sale-speed-lines { position: absolute; inset: 0; opacity: .32; background: linear-gradient(100deg, transparent 8%, rgb(56 189 248 / 70%) 8.2%, transparent 8.6%), linear-gradient(96deg, transparent 35%, rgb(245 158 11 / 50%) 35.2%, transparent 35.6%), repeating-linear-gradient(0deg, transparent 0 62px, rgb(148 163 184 / 10%) 63px 64px); transform: skewX(-12deg) scale(1.2); animation: sale-lines 900ms linear infinite; }
+@keyframes sale-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes sale-car-right-to-left { 0% { opacity: 0; transform: translateX(100vw) scale(.86); } 8% { opacity: 1; } 24% { opacity: 1; transform: translateX(10vw) scale(1.02); } 68% { opacity: 1; transform: translateX(-8vw) scale(1); } 86% { opacity: 1; } 100% { opacity: 0; transform: translateX(-110vw) scale(.9); } }
+@keyframes sale-glow { from { opacity: .45; transform: scaleX(.88); } to { opacity: 1; transform: scaleX(1.08); } }
+@keyframes sale-lines { from { background-position: 0 0, 0 0, 0 0; } to { background-position: -280px 0, -190px 0, 0 64px; } }
+@media (prefers-reduced-motion: reduce) { .automotive-loading, .sale-celebration, .sale-car-right-to-left, .sale-car-glow, .sale-speed-lines { animation: none; } }
+
 html,
 body {
   background-color: var(--color-fundo);

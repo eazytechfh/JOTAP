@@ -70,8 +70,13 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  // Aplica o middleware a tudo, exceto arquivos estáticos do Next (_next/static, _next/image)
-  // e o favicon. /api/* permanece coberto intencionalmente (não checamos sessão de cookie ali,
-  // mas isso não causa problema pois cada API route valida sessão por conta própria).
-  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+  // Aplica o middleware a tudo, exceto arquivos estáticos do Next (_next/static, _next/image),
+  // o favicon e public/effects/* (áudios/imagens de efeitos, sem dado sensível). /effects precisa
+  // ficar fora: o otimizador de imagem do Next faz um fetch interno servidor-a-servidor para
+  // imagens locais (ex.: o carro da celebração de venda) sem repassar o cookie de sessão; se o
+  // middleware exigir auth nesse caminho, o fetch interno cai no redirect para /login (HTML) e o
+  // otimizador falha com "resource isn't a valid image". /api/* permanece coberto
+  // intencionalmente (não checamos sessão de cookie ali, mas isso não causa problema pois cada
+  // API route valida sessão por conta própria).
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|effects/).*)'],
 };

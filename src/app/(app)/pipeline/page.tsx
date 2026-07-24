@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   DndContext,
   PointerSensor,
@@ -21,8 +21,18 @@ import { ESTAGIO_CONFIG } from '@/components/StatusBadge';
 import { useLeadFilters } from '@/hooks/useLeadFilters';
 import { formatContagem } from '@/lib/negociacao/tempo';
 import { statusAtendimentoDoLead, type StatusAtendimento } from '@/lib/negociacao/etiquetasAtendimento';
+import { AutomotiveLoading } from '@/components/AutomotiveLoading';
+import { SaleCelebration } from '@/components/SaleCelebration';
 
 const TICK_MS = 1_000;
+
+function VendaFechadaModal({ lead, onCancel, onConfirm }: { lead: BaseDeLeads; onCancel: () => void; onConfirm: (nome: string, valor: number) => void }) {
+  const [nome, setNome] = useState(lead.nome_lead ?? '');
+  const [valor, setValor] = useState(lead.valor ? String(lead.valor) : '');
+  const numero = Number(valor.replace(',', '.'));
+  const valido = Boolean(nome.trim()) && Number.isFinite(numero) && numero > 0;
+  return <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/55 p-4"><div role="dialog" aria-modal="true" className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl"><h2 className="text-lg font-bold">Complete os dados da venda</h2><p className="mt-1 text-sm text-gray-500">Nome e valor são obrigatórios para fechar o negócio.</p><label className="mt-5 block text-sm font-medium">Nome do lead</label><input value={nome} onChange={(e) => setNome(e.target.value)} className="mt-1 w-full rounded-lg border px-3 py-2" /><label className="mt-4 block text-sm font-medium">Valor da venda</label><input value={valor} onChange={(e) => setValor(e.target.value)} inputMode="decimal" className="mt-1 w-full rounded-lg border px-3 py-2" /><div className="mt-6 flex justify-end gap-3"><button type="button" onClick={onCancel} className="rounded-lg border px-4 py-2 text-sm">Cancelar</button><button type="button" disabled={!valido} onClick={() => onConfirm(nome.trim(), numero)} className="rounded-lg bg-primary px-4 py-2 text-sm text-white disabled:opacity-40">Confirmar venda</button></div></div></div>;
+}
 
 // As colunas do Pipeline são geradas a partir de ESTAGIO_CONFIG (StatusBadge.tsx), que contém
 // exatamente os valores aceitos pela constraint CHECK de estagio_lead no banco. Não adicione um
@@ -214,6 +224,9 @@ export default function PipelinePage() {
   const [agora, setAgora] = useState(() => Date.now());
   const filters = useLeadFilters(leads);
   const { leadsFiltrados } = filters;
+  const [vendaPendente, setVendaPendente] = useState<BaseDeLeads | null>(null);
+  const [celebracao, setCelebracao] = useState<string | null>(null);
+  const fecharCelebracao = useCallback(() => setCelebracao(null), []);
 
   // Tick de 1s só para recalcular a contagem regressiva dos timers nos cards, sem re-buscar
   // os leads do banco.
@@ -292,8 +305,11 @@ export default function PipelinePage() {
     }
 
     fetchLeads();
+    const refresh = () => void fetchLeads();
+    window.addEventListener('lead-assignments-changed', refresh);
     return () => {
       isMounted = false;
+      window.removeEventListener('lead-assignments-changed', refresh);
     };
   }, []);
 
@@ -319,6 +335,10 @@ export default function PipelinePage() {
 
     const leadAtual = leads.find((l) => l.id === leadId);
     if (!leadAtual) return;
+    if (novoEstagio === 'fechado' && (!leadAtual.nome_lead?.trim() || !leadAtual.valor || leadAtual.valor <= 0)) {
+      setVendaPendente(leadAtual);
+      return;
+    }
 
     const estagioAnterior = leadAtual.estagio_lead;
     if (normalizeEstagio(estagioAnterior) === novoEstagio) return;
@@ -419,7 +439,22 @@ export default function PipelinePage() {
       estagio_novo: novoEstagio,
       usuario: nomeUsuario,
     });
+    if (novoEstagio === 'fechado') setCelebracao(leadAtual.nome_lead);
 
+  }
+
+  async function confirmarVenda(nome: string, valor: number) {
+    if (!vendaPendente) return;
+    const supabase = createClient();
+    const { data, error } = await supabase.from('BASE_DE_LEADS').update({ nome_lead: nome, valor, estagio_lead: 'fechado' }).eq('id', vendaPendente.id).select('*').single();
+    if (error || !data) {
+      setErrorMessage('Não foi possível fechar a venda. Verifique os dados e tente novamente.');
+      return;
+    }
+    setLeads((prev) => prev.map((item) => item.id === vendaPendente.id ? data as BaseDeLeads : item));
+    await supabase.from('lead_historico_estagio').insert({ id_lead: vendaPendente.id, estagio_anterior: vendaPendente.estagio_lead, estagio_novo: 'fechado', usuario: nomeUsuario });
+    setVendaPendente(null);
+    setCelebracao(nome);
   }
 
   return (
@@ -440,7 +475,7 @@ export default function PipelinePage() {
       <LeadFiltersBar filters={filters} />
 
       {loading ? (
-        <p className="text-sm text-gray-500">Carregando...</p>
+        <AutomotiveLoading label="Carregando pipeline" />
       ) : (
         <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
           <div className="flex min-h-0 flex-1 gap-4 overflow-x-auto overflow-y-hidden pb-4">
@@ -483,6 +518,8 @@ export default function PipelinePage() {
           }}
         />
       )}
+      {vendaPendente && <VendaFechadaModal lead={vendaPendente} onCancel={() => setVendaPendente(null)} onConfirm={confirmarVenda} />}
+      {celebracao && <SaleCelebration leadName={celebracao} onClose={fecharCelebracao} />}
     </div>
   );
 }
