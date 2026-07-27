@@ -41,6 +41,20 @@ describe('pacote CRM automotivo Jotap', () => {
     expect(read('src/components/AutomotiveLoading.tsx')).toContain('automotive-loading-car');
   });
 
+  it('vincula um veiculo pesquisavel e disponivel ao fechamento atomico', () => {
+    const pipeline = read('src/app/(app)/pipeline/page.tsx');
+    const sql = read('supabase/migrations/0016_venda_vinculada_estoque.sql');
+    expect(pipeline).toContain("from('estoque')");
+    expect(pipeline).toContain('Digite marca, modelo, ano ou placa');
+    expect(pipeline).toContain('filteredVehicles');
+    expect(pipeline).toContain('top-full');
+    expect(pipeline).toContain("rpc('fechar_venda_com_veiculo'");
+    expect(sql).toContain('estoque_veiculo_id');
+    expect(sql).toContain('for update');
+    expect(sql).toContain("v_status <> 'disponivel'");
+    expect(sql).toContain("update public.estoque set status = 'Vendido'");
+  });
+
   it('possui migration nova e segura', () => {
     const sql = read('supabase/migrations/0014_crm_automotivo_auditoria_realtime.sql');
     expect(sql).toContain('create table if not exists public.lead_logs');

@@ -26,12 +26,132 @@ import { SaleCelebration } from '@/components/SaleCelebration';
 
 const TICK_MS = 1_000;
 
-function VendaFechadaModal({ lead, onCancel, onConfirm }: { lead: BaseDeLeads; onCancel: () => void; onConfirm: (nome: string, valor: number) => void }) {
+type VeiculoVenda = {
+  id: number;
+  marca: string | null;
+  modelo: string | null;
+  ano: number | null;
+  placa: string | null;
+  status: string | null;
+};
+
+function normalizarTexto(value: string | null | undefined) {
+  return (value ?? '').trim().toLocaleLowerCase('pt-BR').normalize('NFD').replace(/\p{Diacritic}/gu, '');
+}
+
+function descricaoVeiculo(veiculo: VeiculoVenda) {
+  return [veiculo.marca, veiculo.modelo, veiculo.ano, veiculo.placa].filter(Boolean).join(' · ');
+}
+
+function VendaFechadaModal({ lead, onCancel, onConfirm }: {
+  lead: BaseDeLeads;
+  onCancel: () => void;
+  onConfirm: (nome: string, valor: number, veiculoId: number) => Promise<boolean>;
+}) {
   const [nome, setNome] = useState(lead.nome_lead ?? '');
   const [valor, setValor] = useState(lead.valor ? String(lead.valor) : '');
+  const [vehicles, setVehicles] = useState<VeiculoVenda[]>([]);
+  const [veiculoId, setVeiculoId] = useState<number | null>(null);
+  const [buscaVeiculo, setBuscaVeiculo] = useState('');
+  const [listaAberta, setListaAberta] = useState(false);
+  const [carregandoVeiculos, setCarregandoVeiculos] = useState(true);
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
   const numero = Number(valor.replace(',', '.'));
-  const valido = Boolean(nome.trim()) && Number.isFinite(numero) && numero > 0;
-  return <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/55 p-4"><div role="dialog" aria-modal="true" className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl"><h2 className="text-lg font-bold">Complete os dados da venda</h2><p className="mt-1 text-sm text-gray-500">Nome e valor são obrigatórios para fechar o negócio.</p><label className="mt-5 block text-sm font-medium">Nome do lead</label><input value={nome} onChange={(e) => setNome(e.target.value)} className="mt-1 w-full rounded-lg border px-3 py-2" /><label className="mt-4 block text-sm font-medium">Valor da venda</label><input value={valor} onChange={(e) => setValor(e.target.value)} inputMode="decimal" className="mt-1 w-full rounded-lg border px-3 py-2" /><div className="mt-6 flex justify-end gap-3"><button type="button" onClick={onCancel} className="rounded-lg border px-4 py-2 text-sm">Cancelar</button><button type="button" disabled={!valido} onClick={() => onConfirm(nome.trim(), numero)} className="rounded-lg bg-primary px-4 py-2 text-sm text-white disabled:opacity-40">Confirmar venda</button></div></div></div>;
+  const valido = Boolean(nome.trim()) && Number.isFinite(numero) && numero > 0 && veiculoId !== null;
+  const filteredVehicles = useMemo(() => {
+    const termo = normalizarTexto(buscaVeiculo);
+    return vehicles.filter((veiculo) => !termo || normalizarTexto(descricaoVeiculo(veiculo)).includes(termo));
+  }, [buscaVeiculo, vehicles]);
+
+  useEffect(() => {
+    let ativo = true;
+    async function carregarVeiculos() {
+      const { data, error } = await createClient()
+        .from('estoque')
+        .select('id, marca, modelo, ano, placa, status')
+        .order('marca', { ascending: true });
+      if (!ativo) return;
+      if (error) setErro('Não foi possível carregar os veículos disponíveis.');
+      else setVehicles(((data ?? []) as VeiculoVenda[]).filter(
+        (veiculo) => normalizarTexto(veiculo.status) === 'disponivel'
+      ));
+      setCarregandoVeiculos(false);
+    }
+    void carregarVeiculos();
+    return () => { ativo = false; };
+  }, []);
+
+  async function confirmar() {
+    if (!valido || veiculoId === null) return;
+    setSalvando(true);
+    setErro(null);
+    const sucesso = await onConfirm(nome.trim(), numero, veiculoId);
+    if (!sucesso) setErro('Não foi possível fechar a venda. O veículo pode não estar mais disponível.');
+    setSalvando(false);
+  }
+
+  return (
+    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/55 p-4">
+      <div role="dialog" aria-modal="true" className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+        <h2 className="text-lg font-bold">Complete os dados da venda</h2>
+        <p className="mt-1 text-sm text-gray-500">Nome, valor e veículo vendido são obrigatórios.</p>
+        <label className="mt-5 block text-sm font-medium">Nome do lead</label>
+        <input value={nome} onChange={(e) => setNome(e.target.value)} className="mt-1 w-full rounded-lg border px-3 py-2" />
+        <label className="mt-4 block text-sm font-medium">Valor da venda</label>
+        <input value={valor} onChange={(e) => setValor(e.target.value)} inputMode="decimal" className="mt-1 w-full rounded-lg border px-3 py-2" />
+        <label className="mt-4 block text-sm font-medium">Veículo vendido</label>
+        <div className="relative mt-1">
+          <input
+            value={buscaVeiculo}
+            onChange={(event) => {
+              setBuscaVeiculo(event.target.value);
+              setVeiculoId(null);
+              setListaAberta(true);
+            }}
+            onFocus={() => setListaAberta(true)}
+            placeholder="Digite marca, modelo, ano ou placa"
+            role="combobox"
+            aria-expanded={listaAberta}
+            aria-controls="veiculos-venda-lista"
+            className="w-full rounded-lg border px-3 py-2"
+          />
+          {listaAberta && (
+            <div id="veiculos-venda-lista" role="listbox" className="absolute left-0 right-0 top-full z-[110] mt-1 max-h-60 overflow-y-auto rounded-lg border bg-white py-1 shadow-xl">
+              {carregandoVeiculos && <p className="px-3 py-2 text-sm text-gray-500">Carregando veículos...</p>}
+              {!carregandoVeiculos && filteredVehicles.length === 0 && (
+                <p className="px-3 py-2 text-sm text-gray-500">Nenhum veículo disponível encontrado.</p>
+              )}
+              {filteredVehicles.map((veiculo) => (
+                <button
+                  key={veiculo.id}
+                  type="button"
+                  role="option"
+                  aria-selected={veiculo.id === veiculoId}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => {
+                    setVeiculoId(veiculo.id);
+                    setBuscaVeiculo(descricaoVeiculo(veiculo));
+                    setListaAberta(false);
+                  }}
+                  className="block w-full px-3 py-2 text-left text-sm hover:bg-primary/10"
+                >
+                  {descricaoVeiculo(veiculo)}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        {erro && <p className="mt-3 text-sm text-red-600">{erro}</p>}
+        <div className="mt-6 flex justify-end gap-3">
+          <button type="button" disabled={salvando} onClick={onCancel} className="rounded-lg border px-4 py-2 text-sm">Cancelar</button>
+          <button type="button" disabled={!valido || salvando} onClick={() => void confirmar()} className="rounded-lg bg-primary px-4 py-2 text-sm text-white disabled:opacity-40">
+            {salvando ? 'Confirmando...' : 'Confirmar venda'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // As colunas do Pipeline são geradas a partir de ESTAGIO_CONFIG (StatusBadge.tsx), que contém
@@ -335,7 +455,7 @@ export default function PipelinePage() {
 
     const leadAtual = leads.find((l) => l.id === leadId);
     if (!leadAtual) return;
-    if (novoEstagio === 'fechado' && (!leadAtual.nome_lead?.trim() || !leadAtual.valor || leadAtual.valor <= 0)) {
+    if (novoEstagio === 'fechado') {
       setVendaPendente(leadAtual);
       return;
     }
@@ -443,18 +563,24 @@ export default function PipelinePage() {
 
   }
 
-  async function confirmarVenda(nome: string, valor: number) {
-    if (!vendaPendente) return;
+  async function confirmarVenda(nome: string, valor: number, veiculoId: number): Promise<boolean> {
+    if (!vendaPendente) return false;
     const supabase = createClient();
-    const { data, error } = await supabase.from('BASE_DE_LEADS').update({ nome_lead: nome, valor, estagio_lead: 'fechado' }).eq('id', vendaPendente.id).select('*').single();
+    const { data, error } = await supabase.rpc('fechar_venda_com_veiculo', {
+      p_id_lead: vendaPendente.id,
+      p_nome: nome,
+      p_valor: valor,
+      p_estoque_id: String(veiculoId),
+    }).single();
     if (error || !data) {
       setErrorMessage('Não foi possível fechar a venda. Verifique os dados e tente novamente.');
-      return;
+      return false;
     }
     setLeads((prev) => prev.map((item) => item.id === vendaPendente.id ? data as BaseDeLeads : item));
     await supabase.from('lead_historico_estagio').insert({ id_lead: vendaPendente.id, estagio_anterior: vendaPendente.estagio_lead, estagio_novo: 'fechado', usuario: nomeUsuario });
     setVendaPendente(null);
     setCelebracao(nome);
+    return true;
   }
 
   return (
