@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import type { BaseDeLeads, Vendedor } from '@/types/database';
-import { ESTAGIO_CONFIG } from '@/components/StatusBadge';
+import { usePipelineEtapas } from '@/hooks/usePipelineEtapas';
 
 // Campos como "Etapa", QuemEnviouMsg, UltimaMensagem, Status de Follow, Transferencia,
 // Pesquisa de satisfação, ID CONTATO CLICK, lid, Data e Hora e bot_ativo são preenchidos pela
@@ -11,8 +11,6 @@ import { ESTAGIO_CONFIG } from '@/components/StatusBadge';
 // por isso não aparecem aqui.
 
 const ORIGENS = ['whatsapp', 'instagram', 'facebook', 'site', 'indicacao'];
-
-const ESTAGIOS = Object.keys(ESTAGIO_CONFIG) as Array<keyof typeof ESTAGIO_CONFIG>;
 
 interface FormState {
   nome_lead: string;
@@ -56,6 +54,7 @@ export function NovoLeadModal({ onClose, onCreated }: NovoLeadModalProps) {
   const [vendedores, setVendedores] = useState<Vendedor[]>([]);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const { etapas } = usePipelineEtapas();
 
   useEffect(() => {
     let isMounted = true;
@@ -209,9 +208,9 @@ export function NovoLeadModal({ onClose, onCreated }: NovoLeadModalProps) {
               onChange={(e) => set('estagio_lead', e.target.value)}
               className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
             >
-              {ESTAGIOS.map((estagio) => (
-                <option key={estagio} value={estagio}>
-                  {ESTAGIO_CONFIG[estagio].label}
+              {etapas.map((etapa) => (
+                <option key={etapa.id} value={etapa.id}>
+                  {etapa.nome}
                 </option>
               ))}
             </select>

@@ -5,8 +5,9 @@ import { createClient } from '@/lib/supabase/client';
 import type { BaseDeLeads, Cargo } from '@/types/database';
 import { formatContagem } from '@/lib/negociacao/tempo';
 import { statusAtendimentoDoLead, type StatusAtendimento } from '@/lib/negociacao/etiquetasAtendimento';
-import { ESTAGIO_CONFIG } from '@/components/StatusBadge';
 import { LeadDrawer } from '@/components/LeadDrawer';
+import { usePipelineEtapas } from '@/hooks/usePipelineEtapas';
+import { etapaDe } from '@/lib/pipeline-etapas';
 
 // Watcher client-side do cronômetro de 30min de "Em Negociação":
 // - Faz polling (20s) dos leads ativos nesse estágio e mantém um painel flutuante com a
@@ -92,6 +93,7 @@ export function NegociacaoTimerWatcher({ userCargo }: NegociacaoTimerWatcherProp
   const [leadSelecionado, setLeadSelecionado] = useState<BaseDeLeads | null>(null);
   const [estendendo, setEstendendo] = useState(false);
   const [leadParaExcluir, setLeadParaExcluir] = useState<LeadNegociacao | null>(null);
+  const { etapas } = usePipelineEtapas();
 
   const podeEstender = userCargo === 'admin_master' || userCargo === 'admin' || userCargo === 'gerente';
 
@@ -246,11 +248,11 @@ export function NegociacaoTimerWatcher({ userCargo }: NegociacaoTimerWatcherProp
   }
 
   function estagioLabelOf(estagio: string | null | undefined) {
-    return ESTAGIO_CONFIG[(estagio ?? '').toLowerCase().trim()]?.label ?? 'Desconhecido';
+    return etapaDe(estagio, etapas)?.nome ?? 'Desconhecido';
   }
 
   function estagioColorOf(estagio: string | null | undefined) {
-    return ESTAGIO_CONFIG[(estagio ?? '').toLowerCase().trim()]?.color ?? '#6b7280';
+    return etapaDe(estagio, etapas)?.cor ?? '#6b7280';
   }
 
   async function estenderPrazo(lead: LeadNegociacao) {

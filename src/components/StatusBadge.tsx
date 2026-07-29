@@ -1,4 +1,6 @@
 import clsx from 'clsx';
+import type { PipelineEtapa } from '@/types/database';
+import { etapaDe } from '@/lib/pipeline-etapas';
 
 export interface StatusConfig {
   label: string;
@@ -8,10 +10,8 @@ export interface StatusConfig {
 // Mapa central de estágio -> { label, color }. Mantido aqui para ser reaproveitado por
 // Pipeline, Leads e Dashboard, garantindo cores consistentes em toda a aplicação.
 //
-// IMPORTANTE: estas são as ÚNICAS chaves aceitas pela constraint CHECK da coluna
-// estagio_lead em BASE_DE_LEADS (confirmado via `pg_get_constraintdef` no banco real).
-// Qualquer valor fora desta lista é rejeitado pelo Postgres com erro 23514 ao tentar
-// atualizar o lead — por isso o Pipeline não pode inventar nomes de etapa livremente.
+// Fallback legado usado enquanto as etapas configuráveis ainda estão carregando.
+// As telas operacionais passam a lista atual de pipeline_etapas para refletir o banco.
 export const ESTAGIO_CONFIG: Record<string, StatusConfig> = {
   oportunidade: { label: 'Oportunidade', color: '#22c55e' },
   em_qualificacao: { label: 'Em Qualificação', color: '#38bdf8' },
@@ -27,12 +27,16 @@ const DEFAULT_CONFIG: StatusConfig = { label: 'Desconhecido', color: '#6b7280' }
 
 interface StatusBadgeProps {
   estagio: string | null | undefined;
+  etapas?: PipelineEtapa[];
   className?: string;
 }
 
-export function StatusBadge({ estagio, className }: StatusBadgeProps) {
+export function StatusBadge({ estagio, etapas, className }: StatusBadgeProps) {
   const key = (estagio ?? '').toLowerCase().trim();
-  const config = ESTAGIO_CONFIG[key] ?? DEFAULT_CONFIG;
+  const etapa = etapas ? etapaDe(estagio, etapas) : null;
+  const config = etapa
+    ? { label: etapa.nome, color: etapa.cor }
+    : ESTAGIO_CONFIG[key] ?? DEFAULT_CONFIG;
 
   return (
     <span

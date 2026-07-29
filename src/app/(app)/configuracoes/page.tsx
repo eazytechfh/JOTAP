@@ -2,15 +2,18 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import type { Cargo, Etiqueta, Profile, Vendedor } from '@/types/database';
+import type { Cargo, Etiqueta, PipelineEtapa, Profile, Vendedor } from '@/types/database';
 import { Avatar } from '@/components/Avatar';
+import { usePipelineEtapas } from '@/hooks/usePipelineEtapas';
+import { etapaProtegida, normalizarSlug } from '@/lib/pipeline-etapas';
 
-type Tab = 'novo-usuario' | 'usuarios' | 'etiquetas' | 'fila' | 'credenciais' | 'aparencia';
+type Tab = 'novo-usuario' | 'usuarios' | 'etiquetas' | 'etapas' | 'fila' | 'credenciais' | 'aparencia';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'novo-usuario', label: 'Criar novo usuário' },
   { id: 'usuarios', label: 'Gerenciar usuários' },
   { id: 'etiquetas', label: 'Etiquetas' },
+  { id: 'etapas', label: 'Etapas do pipeline' },
   { id: 'fila', label: 'Fila de atendimento' },
   { id: 'credenciais', label: 'Credenciais' },
   { id: 'aparencia', label: 'Aparência' },
@@ -50,6 +53,7 @@ export default function ConfiguracoesPage() {
   const visibleTabs = TABS.filter((t) => {
     if (t.id === 'credenciais' || t.id === 'aparencia') return isAdminMaster;
     if (t.id === 'novo-usuario' || t.id === 'usuarios') return podeGerenciarUsuarios;
+    if (t.id === 'etapas') return podeGerenciarUsuarios;
     return true;
   });
 
@@ -79,9 +83,251 @@ export default function ConfiguracoesPage() {
       {tab === 'novo-usuario' && <CriarUsuarioTab />}
       {tab === 'usuarios' && <GerenciarUsuariosTab />}
       {tab === 'etiquetas' && <EtiquetasTab />}
+      {tab === 'etapas' && podeGerenciarUsuarios && <PipelineEtapasTab />}
       {tab === 'fila' && <FilaAtendimentoTab />}
       {tab === 'credenciais' && isAdminMaster && <CredenciaisTab />}
       {tab === 'aparencia' && isAdminMaster && <AparenciaTab />}
+    </div>
+  );
+}
+
+function PipelineEtapasTab() {
+  const { etapas, setEtapas, loadingEtapas, erroEtapas, recarregarEtapas } =
+    usePipelineEtapas();
+  const [nome, setNome] = useState('');
+  const [cor, setCor] = useState('#3b82f6');
+  const [ocupado, setOcupado] = useState(false);
+  const [mensagem, setMensagem] = useState<string | null>(null);
+  const supabase = useMemo(() => createClient(), []);
+
+  async function criar(event: React.FormEvent) {
+    event.preventDefault();
+    const nomeNormalizado = nome.trim();
+    const id = normalizarSlug(nomeNormalizado);
+    if (!nomeNormalizado || !id) {
+      setMensagem('Informe um nome válido.');
+      return;
+    }
+
+    setOcupado(true);
+    setMensagem(null);
+    const proximaOrdem = Math.max(0, ...etapas.map((etapa) => etapa.ordem)) + 10;
+    const { error } = await supabase.from('pipeline_etapas').insert({
+      id,
+      nome: nomeNormalizado,
+      cor,
+      ordem: proximaOrdem,
+      ativa: true,
+    });
+
+    if (error) {
+      setMensagem(
+        error.code === '23505'
+          ? 'Já existe uma etapa com esse identificador.'
+          : error.message
+      );
+    } else {
+      setNome('');
+      setMensagem('Etapa criada.');
+      await recarregarEtapas();
+    }
+    setOcupado(false);
+  }
+
+  async function salvar(etapa: PipelineEtapa) {
+    if (etapaProtegida(etapa.id)) {
+      setMensagem('Esta etapa é protegida por automações e não pode ser editada.');
+      return;
+    }
+    if (!etapa.nome.trim()) {
+      setMensagem('O nome não pode ficar vazio.');
+      return;
+    }
+
+    setOcupado(true);
+    const { error } = await supabase
+      .from('pipeline_etapas')
+      .update({ nome: etapa.nome.trim(), cor: etapa.cor })
+      .eq('id', etapa.id);
+    setMensagem(
+      error?.message ?? 'Etapa atualizada. O identificador interno permaneceu estável.'
+    );
+    if (!error) await recarregarEtapas();
+    setOcupado(false);
+  }
+
+  async function remover(etapa: PipelineEtapa) {
+    if (etapaProtegida(etapa.id)) {
+      setMensagem('Esta etapa é protegida por automações e não pode ser removida.');
+      return;
+    }
+    if (!window.confirm(`Excluir a etapa “${etapa.nome}”?`)) return;
+
+    setOcupado(true);
+    const { error } = await supabase
+      .from('pipeline_etapas')
+      .delete()
+      .eq('id', etapa.id);
+    setMensagem(error?.message ?? 'Etapa excluída.');
+    if (!error) await recarregarEtapas();
+    setOcupado(false);
+  }
+
+  async function mover(index: number, delta: -1 | 1) {
+    const destino = index + delta;
+    if (destino < 0 || destino >= etapas.length) return;
+    if (
+      etapaProtegida(etapas[index]?.id) ||
+      etapaProtegida(etapas[destino]?.id)
+    ) {
+      setMensagem('Etapas protegidas não podem ser reordenadas.');
+      return;
+    }
+
+    const novas = [...etapas];
+    [novas[index], novas[destino]] = [novas[destino], novas[index]];
+    setEtapas(novas);
+    setOcupado(true);
+    const { error } = await supabase.rpc('reordenar_pipeline_etapas', {
+      p_ids: novas.map((etapa) => etapa.id),
+    });
+    if (error) {
+      setMensagem(error.message);
+      await recarregarEtapas();
+    } else {
+      setMensagem('Ordem atualizada.');
+      await recarregarEtapas();
+    }
+    setOcupado(false);
+  }
+
+  return (
+    <div className="max-w-3xl space-y-4">
+      <div>
+        <h2 className="text-lg font-semibold text-foreground">Etapas do pipeline</h2>
+        <p className="mt-1 text-sm text-gray-500">
+          Crie etapas e personalize nome, cor e ordem. Etapas usadas por automações
+          permanecem protegidas.
+        </p>
+      </div>
+
+      <form onSubmit={criar} className="flex flex-wrap gap-2 rounded-xl bg-card p-4 shadow-sm">
+        <input
+          value={nome}
+          maxLength={60}
+          onChange={(event) => setNome(event.target.value)}
+          placeholder="Nova etapa"
+          aria-label="Nome da nova etapa"
+          className="min-w-[220px] flex-1 rounded-lg border px-3 py-2 text-sm"
+        />
+        <input
+          type="color"
+          value={cor}
+          onChange={(event) => setCor(event.target.value)}
+          aria-label="Cor da nova etapa"
+          className="h-10 w-12 rounded border"
+        />
+        <button
+          type="submit"
+          disabled={ocupado || !nome.trim()}
+          className="rounded-lg bg-primary px-4 py-2 text-sm text-white disabled:opacity-50"
+        >
+          Criar
+        </button>
+      </form>
+
+      {(mensagem || erroEtapas) && (
+        <p role="status" className="text-sm text-gray-700">
+          {mensagem ?? erroEtapas}
+        </p>
+      )}
+
+      {loadingEtapas ? (
+        <p className="text-sm text-gray-500">Carregando etapas...</p>
+      ) : (
+        <div className="space-y-2">
+          {etapas.map((etapa, index) => {
+            const protegida = etapaProtegida(etapa.id);
+            return (
+              <div
+                key={etapa.id}
+                className="flex flex-wrap items-center gap-2 rounded-xl border bg-card p-3"
+              >
+                <input
+                  disabled={protegida || ocupado}
+                  value={etapa.nome}
+                  maxLength={60}
+                  onChange={(event) =>
+                    setEtapas(
+                      etapas.map((item) =>
+                        item.id === etapa.id ? { ...item, nome: event.target.value } : item
+                      )
+                    )
+                  }
+                  aria-label={`Nome da etapa ${etapa.nome}`}
+                  className="min-w-[180px] flex-1 rounded border px-2 py-1.5 text-sm disabled:bg-gray-50 disabled:text-gray-500"
+                />
+                <input
+                  disabled={protegida || ocupado}
+                  type="color"
+                  value={etapa.cor}
+                  onChange={(event) =>
+                    setEtapas(
+                      etapas.map((item) =>
+                        item.id === etapa.id ? { ...item, cor: event.target.value } : item
+                      )
+                    )
+                  }
+                  aria-label={`Cor da etapa ${etapa.nome}`}
+                  className="h-8 w-10"
+                />
+                {protegida ? (
+                  <span className="rounded-full bg-gray-100 px-2 py-1 text-xs text-gray-500">
+                    Protegida
+                  </span>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      disabled={ocupado || index === 0}
+                      onClick={() => void mover(index, -1)}
+                      aria-label={`Mover ${etapa.nome} para a esquerda`}
+                      className="rounded border px-2 py-1 text-sm disabled:opacity-40"
+                    >
+                      ←
+                    </button>
+                    <button
+                      type="button"
+                      disabled={ocupado || index === etapas.length - 1}
+                      onClick={() => void mover(index, 1)}
+                      aria-label={`Mover ${etapa.nome} para a direita`}
+                      className="rounded border px-2 py-1 text-sm disabled:opacity-40"
+                    >
+                      →
+                    </button>
+                    <button
+                      type="button"
+                      disabled={ocupado}
+                      onClick={() => void salvar(etapa)}
+                      className="text-sm font-medium text-blue-600 disabled:opacity-40"
+                    >
+                      Salvar
+                    </button>
+                    <button
+                      type="button"
+                      disabled={ocupado}
+                      onClick={() => void remover(etapa)}
+                      className="text-sm font-medium text-red-600 disabled:opacity-40"
+                    >
+                      Excluir
+                    </button>
+                  </>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

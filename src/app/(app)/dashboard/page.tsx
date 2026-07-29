@@ -21,7 +21,8 @@ import type { BaseDeLeads } from '@/types/database';
 import { deduplicateLeads, fetchAllLeads } from '@/lib/leads';
 import { KpiCard } from '@/components/KpiCard';
 import { PillFilter, type PillOption } from '@/components/PillFilter';
-import { ESTAGIO_CONFIG } from '@/components/StatusBadge';
+import { usePipelineEtapas } from '@/hooks/usePipelineEtapas';
+import { etapaDe } from '@/lib/pipeline-etapas';
 import { isDentroExpediente } from '@/lib/expediente';
 import { sumCurrentNegotiationValue } from '@/lib/dashboard-metrics';
 
@@ -93,6 +94,7 @@ export default function DashboardPage() {
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const [duplicateCount, setDuplicateCount] = useState(0);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const { etapas } = usePipelineEtapas();
 
   useEffect(() => {
     let isMounted = true;
@@ -231,14 +233,17 @@ export default function DashboardPage() {
       map.set(key, (map.get(key) ?? 0) + 1);
     });
     return Array.from(map.entries())
-      .map(([estagio, total]) => ({
-        estagio,
-        total,
-        label: ESTAGIO_CONFIG[estagio]?.label ?? estagio,
-        color: ESTAGIO_CONFIG[estagio]?.color ?? '#6b7280',
-      }))
+      .map(([estagio, total]) => {
+        const etapa = etapaDe(estagio, etapas);
+        return {
+          estagio,
+          total,
+          label: etapa?.nome ?? estagio,
+          color: etapa?.cor ?? '#6b7280',
+        };
+      })
       .sort((a, b) => b.total - a.total);
-  }, [leadsNoPeriodo]);
+  }, [etapas, leadsNoPeriodo]);
 
   const veiculosMaisProcurados = useMemo(() => {
     const map = new Map<string, number>();
