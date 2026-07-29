@@ -161,14 +161,22 @@ function PipelineEtapasTab() {
       setMensagem('Esta etapa é protegida por automações e não pode ser removida.');
       return;
     }
-    if (!window.confirm(`Excluir a etapa “${etapa.nome}”?`)) return;
+    if (
+      !window.confirm(
+        `Excluir a etapa “${etapa.nome}”? Os leads vinculados serão movidos para Oportunidade.`
+      )
+    ) return;
 
     setOcupado(true);
-    const { error } = await supabase
-      .from('pipeline_etapas')
-      .delete()
-      .eq('id', etapa.id);
-    setMensagem(error?.message ?? 'Etapa excluída.');
+    const { data, error } = await supabase.rpc('excluir_pipeline_etapa', {
+      p_id: etapa.id,
+      p_destino: 'oportunidade',
+    });
+    const leadsRealocados = typeof data === 'number' ? data : 0;
+    setMensagem(
+      error?.message ??
+        `Etapa excluída. ${leadsRealocados} lead(s) movido(s) para Oportunidade.`
+    );
     if (!error) await recarregarEtapas();
     setOcupado(false);
   }

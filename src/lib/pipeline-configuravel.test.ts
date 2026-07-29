@@ -57,4 +57,26 @@ describe('pipeline configurável', () => {
     expect(sql).toMatch(/reordenar_pipeline_etapas/);
     expect(sql).toMatch(/BASE_DE_LEADS/);
   });
+
+  it('exclui etapa editável de forma atômica e realoca seus leads', () => {
+    const config = readFileSync(
+      join(root, 'src', 'app', '(app)', 'configuracoes', 'page.tsx'),
+      'utf8'
+    );
+    expect(config).toContain("rpc('excluir_pipeline_etapa'");
+
+    const migrationPath = join(
+      root,
+      'supabase',
+      'migrations',
+      '0018_excluir_pipeline_etapa.sql'
+    );
+    expect(existsSync(migrationPath), 'a migration 0018 ainda não existe').toBe(true);
+
+    const sql = readFileSync(migrationPath, 'utf8');
+    expect(sql).toMatch(/function public\.excluir_pipeline_etapa/);
+    expect(sql).toMatch(/update public\."BASE_DE_LEADS"[\s\S]*estagio_lead = p_destino/);
+    expect(sql).toMatch(/delete from public\.pipeline_etapas/);
+    expect(sql).toMatch(/pipeline_etapa_protegida/);
+  });
 });
