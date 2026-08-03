@@ -64,24 +64,29 @@ describe('pacote CRM automotivo Jotap', () => {
   });
 
   it('agrega datas de atividade dos leads sem ignorar RLS', () => {
-    const sql = read('supabase/migrations/0019_lead_activity_filter_rpc.sql');
+    const sql = read('supabase/migrations/0020_lead_activity_filter_json.sql');
     expect(sql).toContain('get_lead_activity_dates');
     expect(sql).toContain('security invoker');
     expect(sql).toContain("acao <> 'lead_criado'");
     expect(sql).toContain("acao = 'estagio_alterado'");
     expect(sql).toContain('grant execute on function');
     expect(sql).toContain("notify pgrst, 'reload schema'");
+    expect(sql).toContain('returns jsonb');
+    expect(sql).toContain('jsonb_object_agg');
+    expect(sql).toContain('lead_historico_estagio');
+    expect(sql).toContain('greatest(logs.ultima_atualizacao, history.ultima_movimentacao_historico) as ultima_atualizacao');
   });
 
   it('integra a referência de data ao filtro da pipeline', () => {
     const hook = read('src/hooks/useLeadFilters.ts');
+    const activityHook = read('src/hooks/useLeadActivityDates.ts');
     const filters = read('src/components/LeadFiltersBar.tsx');
     expect(hook).toContain("useState<DataReferencia>('criacao')");
-    expect(hook).toContain("rpc('get_lead_activity_dates')");
     expect(hook).toContain('isLeadWithinPeriod(');
-    expect(hook).toContain('refreshActivityDates = useCallback');
-    expect(hook).toContain('activityRequestRef');
-    expect(hook).toContain('setActivityError(error.message)');
+    expect(activityHook).toContain("rpc('get_lead_activity_dates')");
+    expect(activityHook).toContain('refreshActivityDates = useCallback');
+    expect(activityHook).toContain('activityRequestRef');
+    expect(activityHook).toContain('setActivityError(error.message)');
     expect(hook).not.toContain('}, [enableActivityDates, leads]);');
     expect(filters).toContain('Data considerada');
     expect(filters).toContain('DATA_REFERENCIA_OPTIONS');
@@ -89,5 +94,21 @@ describe('pacote CRM automotivo Jotap', () => {
     expect(filters).toContain('filters.activityError');
     expect(read('src/app/(app)/pipeline/page.tsx')).toContain('await filters.refreshActivityDates()');
     expect(read('src/app/(app)/pipeline/page.tsx')).toContain('await refreshActivityDates();');
+  });
+
+  it('compartilha atividades com o dashboard e contabiliza atualizações e fechamentos', () => {
+    const activityHook = read('src/hooks/useLeadActivityDates.ts');
+    const leadFilters = read('src/hooks/useLeadFilters.ts');
+    const dashboard = read('src/app/(app)/dashboard/page.tsx');
+    expect(activityHook).toContain("rpc('get_lead_activity_dates')");
+    expect(activityHook).toContain('activityRequestRef');
+    expect(leadFilters).toContain('useLeadActivityDates(enableActivityDates)');
+    expect(dashboard).toContain('useLeadActivityDates(true)');
+    expect(dashboard).toContain('activityLoaded ?');
+    expect(dashboard).toContain('setActivityLeads(allLeads)');
+    expect(dashboard).toContain('Leads atualizados');
+    expect(dashboard).toContain('Vendas fechadas');
+    expect(dashboard).toContain('Valor fechado');
+    expect(dashboard).toContain('dataKey="updated"');
   });
 });

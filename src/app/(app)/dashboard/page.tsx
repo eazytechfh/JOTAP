@@ -24,7 +24,12 @@ import { PillFilter, type PillOption } from '@/components/PillFilter';
 import { usePipelineEtapas } from '@/hooks/usePipelineEtapas';
 import { etapaDe } from '@/lib/pipeline-etapas';
 import { isDentroExpediente } from '@/lib/expediente';
-import { sumCurrentNegotiationValue } from '@/lib/dashboard-metrics';
+import {
+  buildDailyLeadActivity,
+  getDashboardActivityMetrics,
+  sumCurrentNegotiationValue,
+} from '@/lib/dashboard-metrics';
+import { useLeadActivityDates } from '@/hooks/useLeadActivityDates';
 
 type Periodo = 'hoje' | 'ontem' | '7d' | '30d' | '90d';
 
@@ -89,12 +94,21 @@ function pctChange(current: number, previous: number): number {
 
 export default function DashboardPage() {
   const [leads, setLeads] = useState<BaseDeLeads[]>([]);
+  const [activityLeads, setActivityLeads] = useState<BaseDeLeads[]>([]);
   const [loading, setLoading] = useState(true);
   const [periodo, setPeriodo] = useState<Periodo>('7d');
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const [duplicateCount, setDuplicateCount] = useState(0);
   const [loadError, setLoadError] = useState<string | null>(null);
   const { etapas } = usePipelineEtapas();
+  const {
+    atividadePorLead,
+    activityLoading,
+    activityLoaded,
+    activityError,
+    activityUpdatedAt,
+    refreshActivityDates,
+  } = useLeadActivityDates(true);
 
   useEffect(() => {
     let isMounted = true;
@@ -119,12 +133,14 @@ export default function DashboardPage() {
         if (!isMounted) return;
         const deduplicated = deduplicateLeads(allLeads);
         setLeads(deduplicated.leads);
+        setActivityLeads(allLeads);
         setDuplicateCount(deduplicated.duplicateCount);
       } catch (error) {
         if (!isMounted) return;
         console.error('Erro ao buscar leads:', error instanceof Error ? error.message : 'Erro desconhecido');
         setLoadError(error instanceof Error ? error.message : 'Não foi possível carregar o dashboard.');
         setLeads([]);
+        setActivityLeads([]);
         setDuplicateCount(0);
       }
 
@@ -169,6 +185,14 @@ export default function DashboardPage() {
   const taxaConversaoAnterior = totalLeadsAnterior > 0 ? (fechadosAnterior / totalLeadsAnterior) * 100 : 0;
 
   const valorEmNegociacao = sumCurrentNegotiationValue(leads);
+  const activityMetrics = useMemo(
+    () => getDashboardActivityMetrics(activityLeads, atividadePorLead, { start, end }),
+    [activityLeads, atividadePorLead, end, start]
+  );
+  const previousActivityMetrics = useMemo(
+    () => getDashboardActivityMetrics(activityLeads, atividadePorLead, { start: prevStart, end: prevEnd }),
+    [activityLeads, atividadePorLead, prevEnd, prevStart]
+  );
 
   const agora = new Date();
   const dentroExpediente = isDentroExpediente(agora);
@@ -194,16 +218,14 @@ export default function DashboardPage() {
     return total / validos.length;
   }, [leadsNoPeriodo]);
 
-  const entradaPorDia = useMemo(() => {
-    const map = new Map<string, number>();
-    leadsNoPeriodo.forEach((lead) => {
-      const key = format(new Date(lead.created_at), 'dd/MM');
-      map.set(key, (map.get(key) ?? 0) + 1);
-    });
-    return Array.from(map.entries())
-      .map(([data, total]) => ({ data, total }))
-      .sort((a, b) => a.data.localeCompare(b.data));
-  }, [leadsNoPeriodo]);
+  const atividadePorDia = useMemo(
+    () =>
+      buildDailyLeadActivity(activityLeads, atividadePorLead, { start, end }).map((item) => ({
+        ...item,
+        data: item.dateKey.slice(5).split('-').reverse().join('/'),
+      })),
+    [activityLeads, atividadePorLead, end, start]
+  );
 
   const leadsPorVendedor = useMemo(() => {
     const map = new Map<string, number>();
@@ -268,6 +290,20 @@ export default function DashboardPage() {
           <h1 className="text-2xl font-bold text-foreground">Visão Geral de Leads</h1>
           <p className="text-xs text-gray-400">{duplicateCount} lead(s) duplicado(s) removido(s) da exibição.</p>
           {loadError && <p className="mt-1 text-xs text-red-600">Erro ao carregar dashboard: {loadError}</p>}
+          {activityLoading && <p className="mt-1 text-xs text-gray-400">Carregando atividades dos leads...</p>}
+          {activityError && (
+            <p className="mt-1 text-xs text-red-600">
+              {activityLoaded
+                ? 'Não foi possível atualizar as atividades; os últimos dados válidos continuam exibidos. '
+                : 'Não foi possível carregar as atividades. '}
+              <button type="button" className="font-medium underline" onClick={() => void refreshActivityDates()}>
+                Tentar novamente
+              </button>
+            </p>
+          )}
+          {activityUpdatedAt && (
+            <p className="mt-1 text-xs text-gray-400">Atividades atualizadas às {format(activityUpdatedAt, 'HH:mm')}</p>
+          )}
           <p className="text-sm text-gray-500">
             {format(start, "dd 'de' MMM", { locale: ptBR })} – {format(end, "dd 'de' MMM", { locale: ptBR })}
             {updatedAt && (
@@ -292,6 +328,24 @@ export default function DashboardPage() {
               variation={pctChange(totalLeads, totalLeadsAnterior)}
               dotColor="#3b82f6"
             />
+            <KpiCard
+              label="Leads atualizados"
+              value={activityLoaded ? String(activityMetrics.updatedLeads) : '—'}
+              variation={activityLoaded ? pctChange(activityMetrics.updatedLeads, previousActivityMetrics.updatedLeads) : null}
+              dotColor="#06b6d4"
+            >
+              <p className="mt-1 text-xs text-gray-500">Leads alterados no período, mesmo quando foram criados anteriormente.</p>
+            </KpiCard>
+            <KpiCard
+              label="Vendas fechadas"
+              value={activityLoaded ? String(activityMetrics.closedSales) : '—'}
+              variation={activityLoaded ? pctChange(activityMetrics.closedSales, previousActivityMetrics.closedSales) : null}
+              dotColor="#16a34a"
+            >
+              <p className="mt-1 text-xs text-gray-500">
+                Valor fechado: {activityLoaded ? currencyFormatter.format(activityMetrics.closedValue) : '—'}
+              </p>
+            </KpiCard>
             <KpiCard
               label="Taxa de Conversão"
               value={`${taxaConversao.toFixed(1)}%`}
@@ -333,20 +387,29 @@ export default function DashboardPage() {
           </div>
 
           <div className="rounded-xl bg-card p-5 shadow-sm">
-            <h2 className="mb-4 text-sm font-semibold text-foreground">Entrada de Leads</h2>
+            <h2 className="mb-1 text-sm font-semibold text-foreground">Entradas e atualizações</h2>
+            <p className="mb-4 text-xs text-gray-500">Atualizações incluem leads antigos alterados no período selecionado.</p>
             <ResponsiveContainer width="100%" height={260}>
-              <AreaChart data={entradaPorDia}>
+              <AreaChart data={atividadePorDia}>
                 <defs>
                   <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.4} />
                     <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                  </linearGradient>
+                  <linearGradient id="colorUpdated" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.35} />
+                    <stop offset="95%" stopColor="#06b6d4" stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="data" tick={{ fontSize: 12 }} />
                 <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
                 <Tooltip />
-                <Area type="monotone" dataKey="total" stroke="#3b82f6" fill="url(#colorTotal)" />
+                <Legend wrapperStyle={{ fontSize: 12 }} />
+                <Area type="monotone" dataKey="created" name="Criados" stroke="#3b82f6" fill="url(#colorTotal)" />
+                {activityLoaded && (
+                  <Area type="monotone" dataKey="updated" name="Atualizados" stroke="#06b6d4" fill="url(#colorUpdated)" />
+                )}
               </AreaChart>
             </ResponsiveContainer>
           </div>
