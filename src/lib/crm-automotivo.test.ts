@@ -62,4 +62,32 @@ describe('pacote CRM automotivo Jotap', () => {
     expect(sql).toContain('supabase_realtime');
     expect(sql).toContain('lead_excluido');
   });
+
+  it('agrega datas de atividade dos leads sem ignorar RLS', () => {
+    const sql = read('supabase/migrations/0019_lead_activity_filter_rpc.sql');
+    expect(sql).toContain('get_lead_activity_dates');
+    expect(sql).toContain('security invoker');
+    expect(sql).toContain("acao <> 'lead_criado'");
+    expect(sql).toContain("acao = 'estagio_alterado'");
+    expect(sql).toContain('grant execute on function');
+    expect(sql).toContain("notify pgrst, 'reload schema'");
+  });
+
+  it('integra a referência de data ao filtro da pipeline', () => {
+    const hook = read('src/hooks/useLeadFilters.ts');
+    const filters = read('src/components/LeadFiltersBar.tsx');
+    expect(hook).toContain("useState<DataReferencia>('criacao')");
+    expect(hook).toContain("rpc('get_lead_activity_dates')");
+    expect(hook).toContain('isLeadWithinPeriod(');
+    expect(hook).toContain('refreshActivityDates = useCallback');
+    expect(hook).toContain('activityRequestRef');
+    expect(hook).toContain('setActivityError(error.message)');
+    expect(hook).not.toContain('}, [enableActivityDates, leads]);');
+    expect(filters).toContain('Data considerada');
+    expect(filters).toContain('DATA_REFERENCIA_OPTIONS');
+    expect(filters).toContain('filters.activityLoading');
+    expect(filters).toContain('filters.activityError');
+    expect(read('src/app/(app)/pipeline/page.tsx')).toContain('await filters.refreshActivityDates()');
+    expect(read('src/app/(app)/pipeline/page.tsx')).toContain('await refreshActivityDates();');
+  });
 });

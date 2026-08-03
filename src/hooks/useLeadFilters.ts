@@ -1,10 +1,16 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import type { BaseDeLeads, Etiqueta } from '@/types/database';
 import { isDentroExpediente } from '@/lib/expediente';
 import type { PillOption } from '@/components/PillFilter';
+import {
+  isLeadWithinPeriod,
+  type DataReferencia,
+  type LeadActivityDates,
+  type Periodo,
+} from '@/lib/lead-period-filter';
 
-export type Periodo = 'hoje' | 'ontem' | '7d' | '30d' | '90d' | 'todos';
+export type { DataReferencia, Periodo } from '@/lib/lead-period-filter';
 export type Expediente = 'todos' | 'dentro' | 'fora';
 
 export const PERIODO_OPTIONS: PillOption<Periodo>[] = [
@@ -22,23 +28,29 @@ export const EXPEDIENTE_OPTIONS: PillOption<Expediente>[] = [
   { value: 'fora', label: 'Fora do expediente' },
 ];
 
-function daysAgo(n: number): Date {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
-  d.setHours(0, 0, 0, 0);
-  return d;
+interface LeadActivityDatesRow {
+  id_lead: number;
+  ultima_atualizacao: string | null;
+  ultima_movimentacao: string | null;
+  ultima_atividade: string | null;
 }
 
-export function useLeadFilters(leads: BaseDeLeads[]) {
+export function useLeadFilters(leads: BaseDeLeads[], enableActivityDates = false) {
   const [busca, setBusca] = useState('');
   const [origemFiltro, setOrigemFiltro] = useState('todas');
   const [vendedorFiltro, setVendedorFiltro] = useState('todos');
   const [veiculoFiltro, setVeiculoFiltro] = useState('todos');
   const [etiquetaFiltro, setEtiquetaFiltro] = useState('todas');
   const [periodo, setPeriodo] = useState<Periodo>('todos');
+  const [dataReferencia, setDataReferencia] = useState<DataReferencia>('criacao');
   const [expediente, setExpediente] = useState<Expediente>('todos');
   const [etiquetasDisponiveis, setEtiquetasDisponiveis] = useState<Etiqueta[]>([]);
   const [etiquetasPorLead, setEtiquetasPorLead] = useState<Map<number, Set<number>>>(new Map());
+  const [atividadePorLead, setAtividadePorLead] = useState<Map<number, LeadActivityDates>>(new Map());
+  const [activityLoading, setActivityLoading] = useState(enableActivityDates);
+  const [activityLoaded, setActivityLoaded] = useState(false);
+  const [activityError, setActivityError] = useState<string | null>(null);
+  const activityRequestRef = useRef(0);
 
   const leadIds = useMemo(() => leads.map((lead) => lead.id), [leads]);
   const leadIdsKey = useMemo(() => leadIds.join(','), [leadIds]);
@@ -117,6 +129,49 @@ export function useLeadFilters(leads: BaseDeLeads[]) {
     };
   }, [leadIds, leadIdsKey, refreshEtiquetas]);
 
+  const refreshActivityDates = useCallback(async () => {
+    if (!enableActivityDates) return;
+
+    const requestId = ++activityRequestRef.current;
+    setActivityLoading(true);
+    setActivityError(null);
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase.rpc('get_lead_activity_dates');
+      if (requestId !== activityRequestRef.current) return;
+      if (error) {
+        console.error('Erro ao buscar atividades dos leads:', error.message);
+        setActivityError(error.message);
+        return;
+      }
+
+      const next = new Map<number, LeadActivityDates>();
+      ((data as LeadActivityDatesRow[] | null) ?? []).forEach((row) => {
+        next.set(Number(row.id_lead), {
+          ultimaAtualizacao: row.ultima_atualizacao,
+          ultimaMovimentacao: row.ultima_movimentacao,
+          ultimaAtividade: row.ultima_atividade,
+        });
+      });
+      setAtividadePorLead(next);
+      setActivityLoaded(true);
+    } catch (error) {
+      if (requestId !== activityRequestRef.current) return;
+      const message = error instanceof Error ? error.message : 'Erro desconhecido';
+      console.error('Erro ao buscar atividades dos leads:', message);
+      setActivityError(message);
+    } finally {
+      if (requestId === activityRequestRef.current) setActivityLoading(false);
+    }
+  }, [enableActivityDates]);
+
+  useEffect(() => {
+    void refreshActivityDates();
+    return () => {
+      activityRequestRef.current += 1;
+    };
+  }, [refreshActivityDates]);
+
   const origensDisponiveis = useMemo(
     () => Array.from(new Set(leads.map((l) => l.origem).filter((v): v is string => Boolean(v)))),
     [leads]
@@ -153,24 +208,7 @@ export function useLeadFilters(leads: BaseDeLeads[]) {
         if (!etiquetasPorLead.get(lead.id)?.has(idEtiqueta)) return false;
       }
 
-      if (periodo !== 'todos') {
-        const created = new Date(lead.created_at);
-        const limites: Record<Exclude<Periodo, 'todos'>, Date> = {
-          hoje: daysAgo(0),
-          ontem: daysAgo(1),
-          '7d': daysAgo(7),
-          '30d': daysAgo(30),
-          '90d': daysAgo(90),
-        };
-
-        if (periodo === 'ontem') {
-          const inicioOntem = daysAgo(1);
-          const fimOntem = daysAgo(0);
-          if (!(created >= inicioOntem && created < fimOntem)) return false;
-        } else if (created < limites[periodo]) {
-          return false;
-        }
-      }
+      if (!isLeadWithinPeriod(lead.created_at, atividadePorLead.get(lead.id), periodo, dataReferencia)) return false;
 
       if (expediente !== 'todos') {
         const dentro = isDentroExpediente(new Date(lead.created_at));
@@ -189,6 +227,8 @@ export function useLeadFilters(leads: BaseDeLeads[]) {
     etiquetaFiltro,
     etiquetasPorLead,
     periodo,
+    dataReferencia,
+    atividadePorLead,
     expediente,
   ]);
 
@@ -199,6 +239,7 @@ export function useLeadFilters(leads: BaseDeLeads[]) {
     setVeiculoFiltro('todos');
     setEtiquetaFiltro('todas');
     setPeriodo('todos');
+    setDataReferencia('criacao');
     setExpediente('todos');
   }
 
@@ -215,6 +256,11 @@ export function useLeadFilters(leads: BaseDeLeads[]) {
     setEtiquetaFiltro,
     periodo,
     setPeriodo,
+    dataReferencia,
+    setDataReferencia,
+    activityLoading,
+    activityLoaded,
+    activityError,
     expediente,
     setExpediente,
     origensDisponiveis,
@@ -225,6 +271,7 @@ export function useLeadFilters(leads: BaseDeLeads[]) {
     leadsFiltrados,
     limparFiltros,
     refreshEtiquetas,
+    refreshActivityDates,
   };
 }
 

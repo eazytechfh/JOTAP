@@ -331,8 +331,8 @@ export default function PipelinePage() {
   const [leadSelecionado, setLeadSelecionado] = useState<BaseDeLeads | null>(null);
   const [nomeUsuario, setNomeUsuario] = useState<string>('Usuário');
   const [agora, setAgora] = useState(() => Date.now());
-  const filters = useLeadFilters(leads);
-  const { leadsFiltrados } = filters;
+  const filters = useLeadFilters(leads, true);
+  const { leadsFiltrados, refreshActivityDates } = filters;
   const [vendaPendente, setVendaPendente] = useState<BaseDeLeads | null>(null);
   const [celebracao, setCelebracao] = useState<string | null>(null);
   const { etapas, erroEtapas } = usePipelineEtapas();
@@ -419,13 +419,18 @@ export default function PipelinePage() {
     }
 
     fetchLeads();
-    const refresh = () => void fetchLeads();
+    const refresh = () => {
+      void (async () => {
+        await fetchLeads();
+        await refreshActivityDates();
+      })();
+    };
     window.addEventListener('lead-assignments-changed', refresh);
     return () => {
       isMounted = false;
       window.removeEventListener('lead-assignments-changed', refresh);
     };
-  }, []);
+  }, [refreshActivityDates]);
 
   const leadsPorColuna = useMemo(() => {
     const map = new Map<string, BaseDeLeads[]>(colunas.map((c) => [c.id, []]));
@@ -553,6 +558,7 @@ export default function PipelinePage() {
       estagio_novo: novoEstagio,
       usuario: nomeUsuario,
     });
+    await filters.refreshActivityDates();
     if (novoEstagio === 'fechado') setCelebracao(leadAtual.nome_lead);
 
   }
@@ -572,6 +578,7 @@ export default function PipelinePage() {
     }
     setLeads((prev) => prev.map((item) => item.id === vendaPendente.id ? data as BaseDeLeads : item));
     await supabase.from('lead_historico_estagio').insert({ id_lead: vendaPendente.id, estagio_anterior: vendaPendente.estagio_lead, estagio_novo: 'fechado', usuario: nomeUsuario });
+    await filters.refreshActivityDates();
     setVendaPendente(null);
     setCelebracao(nome);
     return true;
@@ -593,7 +600,7 @@ export default function PipelinePage() {
         <div className="rounded-lg bg-red-50 px-4 py-2 text-sm text-red-700">{errorMessage}</div>
       )}
 
-      <LeadFiltersBar filters={filters} />
+      <LeadFiltersBar filters={filters} showDataReference />
 
       {loading ? (
         <AutomotiveLoading label="Carregando pipeline" />
@@ -632,6 +639,7 @@ export default function PipelinePage() {
           onUpdated={(atualizado) => {
             setLeadSelecionado(atualizado);
             setLeads((prev) => prev.map((l) => (l.id === atualizado.id ? atualizado : l)));
+            void filters.refreshActivityDates();
           }}
           onDeleted={(leadId) => {
             setLeads((leadsAtuais) => leadsAtuais.filter((l) => l.id !== leadId));

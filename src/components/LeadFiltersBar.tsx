@@ -7,12 +7,14 @@ import {
   PERIODO_OPTIONS,
   type LeadFiltersState,
 } from '@/hooks/useLeadFilters';
+import { DATA_REFERENCIA_OPTIONS } from '@/lib/lead-period-filter';
 
 interface LeadFiltersBarProps {
   filters: LeadFiltersState;
+  showDataReference?: boolean;
 }
 
-export function LeadFiltersBar({ filters }: LeadFiltersBarProps) {
+export function LeadFiltersBar({ filters, showDataReference = false }: LeadFiltersBarProps) {
   const [etiquetasOpen, setEtiquetasOpen] = useState(false);
   const etiquetaSelecionada = useMemo(
     () =>
@@ -121,6 +123,34 @@ export function LeadFiltersBar({ filters }: LeadFiltersBarProps) {
           </div>
         )}
       </div>
+
+      {showDataReference && (
+        <label className="flex items-center gap-2 text-sm text-gray-600">
+          <span className="whitespace-nowrap">Data considerada</span>
+          <select
+            value={filters.dataReferencia}
+            onChange={(event) => filters.setDataReferencia(event.target.value as typeof filters.dataReferencia)}
+            disabled={(filters.activityLoading || Boolean(filters.activityError)) && !filters.activityLoaded}
+            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700"
+          >
+            {DATA_REFERENCIA_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          {filters.activityLoading && <span className="text-xs text-gray-400">Carregando atividades...</span>}
+          {filters.activityError && (
+            <button
+              type="button"
+              onClick={() => void filters.refreshActivityDates()}
+              className="text-xs font-medium text-red-600 hover:text-red-700"
+            >
+              Falha ao carregar — tentar novamente
+            </button>
+          )}
+        </label>
+      )}
 
       <PillFilter options={PERIODO_OPTIONS} selected={filters.periodo} onChange={filters.setPeriodo} />
       <PillFilter
