@@ -104,11 +104,10 @@ describe('pacote CRM automotivo Jotap', () => {
     expect(activityHook).toContain('activityRequestRef');
     expect(leadFilters).toContain('useLeadActivityDates(enableActivityDates)');
     expect(dashboard).toContain('useLeadActivityDates(true)');
-    expect(dashboard).toContain('activityLoaded ?');
     expect(dashboard).toContain('setActivityLeads(allLeads)');
-    expect(dashboard).toContain('Leads atualizados');
-    expect(dashboard).toContain('Vendas fechadas');
-    expect(dashboard).toContain('Valor fechado');
+    expect(dashboard).not.toContain('label="Leads atualizados"');
+    expect(dashboard).not.toContain('label="Vendas fechadas"');
+    expect(dashboard).toContain('leadsAtivosNoPeriodo');
     expect(dashboard).toContain('dataKey="updated"');
   });
 });

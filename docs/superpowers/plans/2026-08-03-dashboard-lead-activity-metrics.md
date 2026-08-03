@@ -4,15 +4,15 @@
 
 **Goal:** Make recent lead updates and recently closed contracts visible and countable on the dashboard without misclassifying old leads as newly created.
 
-**Architecture:** Extract the existing activity-RPC lifecycle into a reusable React hook shared by pipeline and dashboard. Add pure dashboard metric helpers that classify unique updated leads and current closed leads by their latest relevant log timestamp, while creation-based KPIs remain based on `created_at`. Extend the dashboard with update/closing KPIs and a combined daily creation/update chart.
+**Architecture:** Extract the existing activity-RPC lifecycle into a reusable React hook shared by pipeline and dashboard. Keep the top KPIs creation-based and use a created-or-updated dataset for the lower seller, origin, stage, and vehicle breakdowns. Extend the daily chart with separate creation and update series.
 
 **Tech Stack:** Next.js 14, React 18, TypeScript, Supabase/PostgreSQL, Recharts, Vitest.
 
 ## Global Constraints
 
 - “Total de Leads” and arrival/expediente metrics remain creation-based.
-- “Leads atualizados” uses `ultima_atualizacao`, which excludes `lead_criado`.
-- “Vendas fechadas” uses current stage `fechado` plus `ultima_movimentacao`.
+- The top KPI cards remain unchanged.
+- The lower breakdowns include leads created or updated in the selected period.
 - A lead created in 2025 and closed in the selected 2026 period must appear in updates and closed-sale metrics.
 - Activity loading failures must not hide creation-based dashboard data.
 - Existing RLS and aggregate RPC remain the source of activity timestamps.
@@ -56,11 +56,10 @@
 
 **Interfaces:**
 - Consumes reusable activity dates and pure metrics.
-- Produces update/closing KPI cards and combined creation/update daily chart.
+- Produces updated lower breakdowns and a combined creation/update daily chart.
 
-- [ ] Add failing UI contracts for “Leads atualizados”, “Vendas fechadas”, “Valor fechado”, and chart series.
+- [ ] Add failing UI contracts ensuring no new top cards and activity-aware lower breakdowns.
 - [ ] Load activity dates on dashboard and compute current/previous-period activity metrics.
-- [ ] Render the new KPIs and activity series while leaving creation KPIs unchanged.
+- [ ] Render the activity-aware lower breakdowns and chart while leaving top KPIs unchanged.
 - [ ] Surface activity load errors without blocking the base dashboard.
 - [ ] Run focused tests, all tests, production build, diff checks, and independent code review.
-

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { BaseDeLeads } from '@/types/database';
 import {
   buildDailyLeadActivity,
-  getDashboardActivityMetrics,
+  getActiveLeadsInRange,
   sumCurrentNegotiationValue,
 } from './dashboard-metrics';
 import type { LeadActivityDates } from './lead-period-filter';
@@ -56,19 +56,6 @@ describe('métricas de atividade do dashboard', () => {
     end: new Date('2026-08-03T23:59:59-03:00'),
   };
 
-  it('contabiliza lead antigo atualizado e fechado no período', () => {
-    expect(getDashboardActivityMetrics([oldClosedLead, recentLead], activityByLead, range)).toEqual({
-      updatedLeads: 1,
-      closedSales: 1,
-      closedValue: 85000,
-    });
-  });
-
-  it('não conta como venda uma movimentação de lead que não está fechado', () => {
-    const reopened = { ...oldClosedLead, estagio_lead: 'follow_up' } as BaseDeLeads;
-    expect(getDashboardActivityMetrics([reopened], activityByLead, range).closedSales).toBe(0);
-  });
-
   it('agrupa criações e últimas atualizações em séries diárias separadas', () => {
     expect(buildDailyLeadActivity([oldClosedLead, recentLead], activityByLead, range)).toEqual([
       { dateKey: '2026-08-02', created: 1, updated: 0 },
@@ -76,27 +63,10 @@ describe('métricas de atividade do dashboard', () => {
     ]);
   });
 
-  it('une atualizações de contatos duplicados sem descartar contratos fechados', () => {
-    const duplicate = {
-      ...oldClosedLead,
-      id: 12739,
-      created_at: '2026-01-10T10:00:00-03:00',
-      telefone: '55 (41) 8444-9033',
-      estagio_lead: 'oportunidade',
-      valor: null,
-    } as BaseDeLeads;
-    const original = { ...oldClosedLead, telefone: '4184449033' } as BaseDeLeads;
-    const duplicateActivity = new Map(activityByLead);
-    duplicateActivity.set(12739, {
-      ultimaAtualizacao: '2026-08-02T08:00:00-03:00',
-      ultimaMovimentacao: null,
-      ultimaAtividade: '2026-08-02T08:00:00-03:00',
-    });
-
-    expect(getDashboardActivityMetrics([original, duplicate], duplicateActivity, range)).toEqual({
-      updatedLeads: 1,
-      closedSales: 1,
-      closedValue: 85000,
-    });
+  it('inclui nos detalhamentos leads criados ou atualizados no período', () => {
+    expect(getActiveLeadsInRange([oldClosedLead, recentLead], activityByLead, range).map((item) => item.id)).toEqual([
+      12737,
+      12738,
+    ]);
   });
 });

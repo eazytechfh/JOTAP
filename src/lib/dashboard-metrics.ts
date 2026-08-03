@@ -38,30 +38,16 @@ export function sumCurrentNegotiationValue(leads: BaseDeLeads[]): number {
     }, 0);
 }
 
-export function getDashboardActivityMetrics(
+export function getActiveLeadsInRange(
   leads: BaseDeLeads[],
   activityByLead: Map<number, LeadActivityDates>,
   range: DateRange
-) {
-  const updatedIdentities = new Set<string>();
-  let closedSales = 0;
-  let closedValue = 0;
-
-  leads.forEach((lead) => {
-    const activity = activityByLead.get(lead.id);
-    if (isDateInRange(activity?.ultimaAtualizacao, range)) {
-      updatedIdentities.add(leadIdentityKey(lead));
-    }
-
-    const isClosed = (lead.estagio_lead ?? '').trim().toLowerCase() === 'fechado';
-    if (isClosed && isDateInRange(activity?.ultimaMovimentacao, range)) {
-      closedSales += 1;
-      const value = Number(lead.valor);
-      if (Number.isFinite(value)) closedValue += value;
-    }
-  });
-
-  return { updatedLeads: updatedIdentities.size, closedSales, closedValue };
+): BaseDeLeads[] {
+  return leads.filter(
+    (lead) =>
+      isDateInRange(lead.created_at, range) ||
+      isDateInRange(activityByLead.get(lead.id)?.ultimaAtualizacao, range)
+  );
 }
 
 export function buildDailyLeadActivity(

@@ -26,7 +26,7 @@ import { etapaDe } from '@/lib/pipeline-etapas';
 import { isDentroExpediente } from '@/lib/expediente';
 import {
   buildDailyLeadActivity,
-  getDashboardActivityMetrics,
+  getActiveLeadsInRange,
   sumCurrentNegotiationValue,
 } from '@/lib/dashboard-metrics';
 import { useLeadActivityDates } from '@/hooks/useLeadActivityDates';
@@ -185,13 +185,9 @@ export default function DashboardPage() {
   const taxaConversaoAnterior = totalLeadsAnterior > 0 ? (fechadosAnterior / totalLeadsAnterior) * 100 : 0;
 
   const valorEmNegociacao = sumCurrentNegotiationValue(leads);
-  const activityMetrics = useMemo(
-    () => getDashboardActivityMetrics(activityLeads, atividadePorLead, { start, end }),
-    [activityLeads, atividadePorLead, end, start]
-  );
-  const previousActivityMetrics = useMemo(
-    () => getDashboardActivityMetrics(activityLeads, atividadePorLead, { start: prevStart, end: prevEnd }),
-    [activityLeads, atividadePorLead, prevEnd, prevStart]
+  const leadsAtivosNoPeriodo = useMemo(
+    () => getActiveLeadsInRange(leads, atividadePorLead, { start, end }),
+    [atividadePorLead, end, leads, start]
   );
 
   const agora = new Date();
@@ -229,7 +225,7 @@ export default function DashboardPage() {
 
   const leadsPorVendedor = useMemo(() => {
     const map = new Map<string, number>();
-    leadsNoPeriodo.forEach((lead) => {
+    leadsAtivosNoPeriodo.forEach((lead) => {
       const key = lead.vendedor || 'Sem vendedor';
       map.set(key, (map.get(key) ?? 0) + 1);
     });
@@ -237,20 +233,20 @@ export default function DashboardPage() {
       .map(([vendedor, total]) => ({ vendedor, total }))
       .sort((a, b) => b.total - a.total)
       .slice(0, 8);
-  }, [leadsNoPeriodo]);
+  }, [leadsAtivosNoPeriodo]);
 
   const origemDosLeads = useMemo(() => {
     const map = new Map<string, number>();
-    leadsNoPeriodo.forEach((lead) => {
+    leadsAtivosNoPeriodo.forEach((lead) => {
       const key = lead.origem || 'Não informado';
       map.set(key, (map.get(key) ?? 0) + 1);
     });
     return Array.from(map.entries()).map(([origem, total]) => ({ origem, total }));
-  }, [leadsNoPeriodo]);
+  }, [leadsAtivosNoPeriodo]);
 
   const leadsPorEstagio = useMemo(() => {
     const map = new Map<string, number>();
-    leadsNoPeriodo.forEach((lead) => {
+    leadsAtivosNoPeriodo.forEach((lead) => {
       const key = (lead.estagio_lead || 'desconhecido').toLowerCase();
       map.set(key, (map.get(key) ?? 0) + 1);
     });
@@ -265,11 +261,11 @@ export default function DashboardPage() {
         };
       })
       .sort((a, b) => b.total - a.total);
-  }, [etapas, leadsNoPeriodo]);
+  }, [etapas, leadsAtivosNoPeriodo]);
 
   const veiculosMaisProcurados = useMemo(() => {
     const map = new Map<string, number>();
-    leadsNoPeriodo.forEach((lead) => {
+    leadsAtivosNoPeriodo.forEach((lead) => {
       if (!lead.veiculo_interesse) return;
       map.set(lead.veiculo_interesse, (map.get(lead.veiculo_interesse) ?? 0) + 1);
     });
@@ -277,7 +273,7 @@ export default function DashboardPage() {
       .map(([veiculo, total]) => ({ veiculo, total }))
       .sort((a, b) => b.total - a.total)
       .slice(0, 8);
-  }, [leadsNoPeriodo]);
+  }, [leadsAtivosNoPeriodo]);
 
   const maxVendedor = Math.max(1, ...leadsPorVendedor.map((v) => v.total));
   const maxEstagio = Math.max(1, ...leadsPorEstagio.map((v) => v.total));
@@ -328,24 +324,6 @@ export default function DashboardPage() {
               variation={pctChange(totalLeads, totalLeadsAnterior)}
               dotColor="#3b82f6"
             />
-            <KpiCard
-              label="Leads atualizados"
-              value={activityLoaded ? String(activityMetrics.updatedLeads) : '—'}
-              variation={activityLoaded ? pctChange(activityMetrics.updatedLeads, previousActivityMetrics.updatedLeads) : null}
-              dotColor="#06b6d4"
-            >
-              <p className="mt-1 text-xs text-gray-500">Leads alterados no período, mesmo quando foram criados anteriormente.</p>
-            </KpiCard>
-            <KpiCard
-              label="Vendas fechadas"
-              value={activityLoaded ? String(activityMetrics.closedSales) : '—'}
-              variation={activityLoaded ? pctChange(activityMetrics.closedSales, previousActivityMetrics.closedSales) : null}
-              dotColor="#16a34a"
-            >
-              <p className="mt-1 text-xs text-gray-500">
-                Valor fechado: {activityLoaded ? currencyFormatter.format(activityMetrics.closedValue) : '—'}
-              </p>
-            </KpiCard>
             <KpiCard
               label="Taxa de Conversão"
               value={`${taxaConversao.toFixed(1)}%`}
