@@ -19,12 +19,8 @@ import { LeadDrawer } from '@/components/LeadDrawer';
 import { LeadFiltersBar } from '@/components/LeadFiltersBar';
 import { useLeadFilters } from '@/hooks/useLeadFilters';
 import { usePipelineEtapas } from '@/hooks/usePipelineEtapas';
-import { formatContagem } from '@/lib/negociacao/tempo';
-import { statusAtendimentoDoLead, type StatusAtendimento } from '@/lib/negociacao/etiquetasAtendimento';
 import { AutomotiveLoading } from '@/components/AutomotiveLoading';
 import { SaleCelebration } from '@/components/SaleCelebration';
-
-const TICK_MS = 1_000;
 
 type VeiculoVenda = {
   id: number;
@@ -161,39 +157,12 @@ function normalizeEstagio(estagio: string, etapas: PipelineEtapa[]): string {
   return found?.id ?? etapas[0]?.id ?? 'oportunidade';
 }
 
-// Timer de negociação exibido no próprio card do Pipeline: quando o lead já tem a etiqueta
-// "Atendimento finalizado", vira um selo fixo "Finalizado" (para de contar, não some); com
-// "Atendimento iniciado" continua contando normalmente, só que em verde (ver
-// src/lib/negociacao/etiquetasAtendimento.ts).
-function TimerNegociacaoCard({ expiraEm, agora, statusAtendimento }: { expiraEm: string; agora: number; statusAtendimento: StatusAtendimento }) {
-  if (statusAtendimento === 'finalizado') {
-    return (
-      <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-semibold text-gray-500">
-        Finalizado
-      </span>
-    );
-  }
-
-  const restante = new Date(expiraEm).getTime() - agora;
-  const vencido = restante <= 0;
-  const iniciado = statusAtendimento === 'iniciado';
-  const cor = iniciado ? 'bg-green-50 text-green-700' : vencido ? 'bg-red-50 text-red-700' : 'bg-orange-50 text-orange-700';
-
-  return (
-    <span className={`mt-1 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${cor}`}>
-      {vencido && !iniciado ? 'Vencido' : formatContagem(restante)}
-    </span>
-  );
-}
-
 interface CardProps {
   lead: BaseDeLeads;
   onOpen: (lead: BaseDeLeads) => void;
-  agora: number;
-  statusAtendimento: StatusAtendimento;
 }
 
-function LeadCard({ lead, onOpen, agora, statusAtendimento }: CardProps) {
+function LeadCard({ lead, onOpen }: CardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: lead.id,
   });
@@ -203,8 +172,6 @@ function LeadCard({ lead, onOpen, agora, statusAtendimento }: CardProps) {
     transition,
     opacity: isDragging ? 0.5 : 1,
   };
-
-  const mostrarTimer = lead.estagio_lead.toLowerCase().trim() === 'em_negociacao' && !!lead.negociacao_expira_em;
 
   return (
     <div
@@ -226,13 +193,6 @@ function LeadCard({ lead, onOpen, agora, statusAtendimento }: CardProps) {
         <p className="truncate text-xs text-gray-600">Interesse: {lead.veiculo_interesse}</p>
       )}
       {lead.vendedor && <p className="truncate text-xs text-gray-400">Vendedor: {lead.vendedor}</p>}
-      {mostrarTimer && (
-        <TimerNegociacaoCard
-          expiraEm={lead.negociacao_expira_em as string}
-          agora={agora}
-          statusAtendimento={statusAtendimento}
-        />
-      )}
     </div>
   );
 }
@@ -243,13 +203,11 @@ interface ColumnProps {
   color: string;
   leads: BaseDeLeads[];
   onOpenLead: (lead: BaseDeLeads) => void;
-  agora: number;
-  statusAtendimentoPorLead: Map<number, StatusAtendimento>;
 }
 
 const LEADS_POR_PAGINA = 8;
 
-function Column({ id, label, color, leads, onOpenLead, agora, statusAtendimentoPorLead }: ColumnProps) {
+function Column({ id, label, color, leads, onOpenLead }: ColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id });
   const [pagina, setPagina] = useState(1);
 
@@ -288,8 +246,6 @@ function Column({ id, label, color, leads, onOpenLead, agora, statusAtendimentoP
               key={lead.id}
               lead={lead}
               onOpen={onOpenLead}
-              agora={agora}
-              statusAtendimento={statusAtendimentoPorLead.get(lead.id) ?? null}
             />
           ))}
         </div>
@@ -330,7 +286,6 @@ export default function PipelinePage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [leadSelecionado, setLeadSelecionado] = useState<BaseDeLeads | null>(null);
   const [nomeUsuario, setNomeUsuario] = useState<string>('Usuário');
-  const [agora, setAgora] = useState(() => Date.now());
   const filters = useLeadFilters(leads, true);
   const { leadsFiltrados, refreshActivityDates } = filters;
   const [vendaPendente, setVendaPendente] = useState<BaseDeLeads | null>(null);
@@ -341,26 +296,6 @@ export default function PipelinePage() {
     [etapas]
   );
   const fecharCelebracao = useCallback(() => setCelebracao(null), []);
-
-  // Tick de 1s só para recalcular a contagem regressiva dos timers nos cards, sem re-buscar
-  // os leads do banco.
-  useEffect(() => {
-    const intervalo = setInterval(() => setAgora(Date.now()), TICK_MS);
-    return () => clearInterval(intervalo);
-  }, []);
-
-  const etiquetaNomePorId = useMemo(
-    () => new Map(filters.etiquetasDisponiveis.map((etiqueta) => [etiqueta.id, etiqueta.nome])),
-    [filters.etiquetasDisponiveis]
-  );
-
-  const statusAtendimentoPorLead = useMemo(() => {
-    const map = new Map<number, StatusAtendimento>();
-    leads.forEach((lead) => {
-      map.set(lead.id, statusAtendimentoDoLead(filters.etiquetasPorLead.get(lead.id), etiquetaNomePorId));
-    });
-    return map;
-  }, [leads, filters.etiquetasPorLead, etiquetaNomePorId]);
 
   useEffect(() => {
     async function fetchUsuario() {
@@ -396,7 +331,7 @@ export default function PipelinePage() {
           const { data, error } = await supabase
             .from('BASE_DE_LEADS')
             .select(
-              'id, id_empresa, nome_lead, telefone, email, origem, vendedor, veiculo_interesse, resumo_qualificacao, estagio_lead, resumo_comercial, created_at, updated_at, valor, observacao_vendedor, bot_ativo, bot_ativo_alterado_em, "Etapa", "QuemEnviouMsg", "UltimaMensagem", StatusDeFollow:"Status de Follow", "Transferencia", PesquisaDeSatisfacao:"Pesquisa de satisfação", cpf, data_nascimento, score_serasa, follow_manual, negociacao_expira_em, negociacao_notificado_em, negociacao_extensoes'
+              'id, id_empresa, nome_lead, telefone, email, origem, vendedor, veiculo_interesse, resumo_qualificacao, estagio_lead, resumo_comercial, created_at, updated_at, valor, observacao_vendedor, bot_ativo, bot_ativo_alterado_em, "Etapa", "QuemEnviouMsg", "UltimaMensagem", StatusDeFollow:"Status de Follow", "Transferencia", PesquisaDeSatisfacao:"Pesquisa de satisfação", cpf, data_nascimento, score_serasa, follow_manual'
             )
             .order('created_at', { ascending: false })
             .order('id', { ascending: false })
@@ -480,67 +415,14 @@ export default function PipelinePage() {
       )
     );
 
-    // Ao entrar em "em_negociacao" inicia o cronômetro de 30min; ao sair, limpa o prazo para
-    // não deixar um popup de expiração "fantasma" caso o lead volte depois para essa coluna.
-    const entrandoEmNegociacao = novoEstagio === 'em_negociacao';
-    const saindoDeNegociacao = normalizeEstagio(estagioAnterior, etapas) === 'em_negociacao' && !entrandoEmNegociacao;
-
     const supabase = createClient();
-
-    // Ao entrar/sair de "em_negociacao" também resetamos os campos de status de notificação
-    // (negociacao_notificacao_status/erro/reivindicada_em), senão um ciclo antigo poderia
-    // deixar o lead marcado como já notificado/reivindicado quando o cronômetro reiniciar.
-    const camposNegociacaoCompletos = entrandoEmNegociacao
-      ? {
-          negociacao_expira_em: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
-          negociacao_notificado_em: null,
-          negociacao_extensoes: 0,
-          negociacao_notificacao_status: null,
-          negociacao_notificacao_erro: null,
-          negociacao_notificacao_reivindicada_em: null,
-        }
-      : saindoDeNegociacao
-        ? {
-            negociacao_expira_em: null,
-            negociacao_notificado_em: null,
-            negociacao_extensoes: 0,
-            negociacao_notificacao_status: null,
-            negociacao_notificacao_erro: null,
-            negociacao_notificacao_reivindicada_em: null,
-          }
-        : {};
-
-    let { error } = await supabase
+    const { error } = await supabase
       .from('BASE_DE_LEADS')
       .update({
         estagio_lead: novoEstagio,
-        ...camposNegociacaoCompletos,
         ...(followManual ? { follow_manual: followManual } : {}),
       })
       .eq('id', leadId);
-
-    // Fallback: as colunas de status de notificação (migration 0009) ainda não existem nesse
-    // ambiente. Refaz o update só com as colunas básicas do cronômetro (migration 0008).
-    if (error && (error.code === '42703' || /column|schema cache/i.test(error.message))) {
-      const camposBasicos = entrandoEmNegociacao
-        ? {
-            negociacao_expira_em: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
-            negociacao_notificado_em: null,
-            negociacao_extensoes: 0,
-          }
-        : saindoDeNegociacao
-          ? { negociacao_expira_em: null, negociacao_notificado_em: null, negociacao_extensoes: 0 }
-          : {};
-
-      ({ error } = await supabase
-        .from('BASE_DE_LEADS')
-        .update({
-          estagio_lead: novoEstagio,
-          ...camposBasicos,
-          ...(followManual ? { follow_manual: followManual } : {}),
-        })
-        .eq('id', leadId));
-    }
 
     if (error) {
       // Rollback em caso de erro de escrita, e aviso simples ao usuário.
@@ -615,8 +497,6 @@ export default function PipelinePage() {
                 color={coluna.color}
                 leads={leadsPorColuna.get(coluna.id) ?? []}
                 onOpenLead={setLeadSelecionado}
-                agora={agora}
-                statusAtendimentoPorLead={statusAtendimentoPorLead}
               />
             ))}
           </div>

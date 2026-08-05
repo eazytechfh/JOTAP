@@ -53,20 +53,6 @@ export interface BaseDeLeads {
   data_nascimento: string | null;
   score_serasa: number | null;
   follow_manual: 'ativo' | 'inativo' | string | null;
-  /** Prazo do cronômetro de 30min de "Em Negociação"; null quando o lead não está nesse estágio. */
-  negociacao_expira_em: string | null;
-  /** Marca quando o popup/notificação de expiração já foi disparado, para não repetir. */
-  negociacao_notificado_em: string | null;
-  /** Quantas vezes gerente/admin estenderam o cronômetro em +30min. */
-  negociacao_extensoes: number;
-  /** Estado do envio ao webhook do n8n: 'enviando' | 'erro' | 'enviado' | null. */
-  negociacao_notificacao_status: string | null;
-  /** Quantas vezes o sistema tentou reivindicar/enviar a notificação deste lead. */
-  negociacao_notificacao_tentativas: number;
-  /** Última mensagem de erro ao tentar notificar (ex: webhook fora do ar, env var ausente). */
-  negociacao_notificacao_erro: string | null;
-  /** Timestamp de quando um processo reivindicou o envio (evita duplo disparo concorrente). */
-  negociacao_notificacao_reivindicada_em: string | null;
 }
 
 export interface LeadEtiqueta {

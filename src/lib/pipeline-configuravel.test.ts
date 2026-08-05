@@ -20,7 +20,6 @@ describe('pipeline configurável', () => {
       ['src', 'app', '(app)', 'leads', 'page.tsx'],
       ['src', 'app', '(app)', 'dashboard', 'page.tsx'],
       ['src', 'components', 'NovoLeadModal.tsx'],
-      ['src', 'components', 'NegociacaoTimerWatcher.tsx'],
     ];
 
     for (const parts of expectedFiles) {

@@ -36,7 +36,6 @@ describe('contrato do drawer de lead', () => {
   it.each([
     'src/app/(app)/leads/page.tsx',
     'src/app/(app)/pipeline/page.tsx',
-    'src/components/NegociacaoTimerWatcher.tsx',
   ])('%s remove o lead localmente pelo callback', (path) => {
     const consumer = readFileSync(resolve(process.cwd(), path), 'utf8');
     expect(consumer).toContain('onDeleted={(leadId)');

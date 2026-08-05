@@ -86,10 +86,6 @@ export function NovoLeadModal({ onClose, onCreated }: NovoLeadModalProps) {
     setErro(null);
     const supabase = createClient();
 
-    // Se o lead já nasce em "Em Negociação", inicia o cronômetro de 30min imediatamente, do
-    // mesmo jeito que o drag-and-drop do Pipeline faz ao mover um lead pra esse estágio.
-    const entrandoEmNegociacao = form.estagio_lead === 'em_negociacao';
-
     const { data, error } = await supabase
       .from('BASE_DE_LEADS')
       .insert({
@@ -109,10 +105,6 @@ export function NovoLeadModal({ onClose, onCreated }: NovoLeadModalProps) {
         estagio_lead: form.estagio_lead,
         resumo_comercial: form.resumo_comercial.trim() || null,
         observacao_vendedor: form.observacao_vendedor.trim() || null,
-        ...(entrandoEmNegociacao && {
-          negociacao_expira_em: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
-          negociacao_extensoes: 0,
-        }),
       })
       .select('*')
       .single();
