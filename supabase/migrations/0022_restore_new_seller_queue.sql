@@ -41,8 +41,8 @@ begin
     if not found then
       -- Um vendedor novo sempre entra aguardando. Nunca desloca o vendedor da
       -- vez e passa a integrar a ordem existente pelo novo id da tabela.
-      insert into public."VENDEDORES" (vendedor, telefone, atender, quantos_lead, ativo)
-      values (v_nome, v_telefone, 'espera', 0, true);
+      insert into public."VENDEDORES" (vendedor, telefone, id_empresa, atender, quantos_lead, ativo)
+      values (v_nome, v_telefone, 1, 'espera', 0, true);
     end if;
   end if;
 
@@ -75,8 +75,8 @@ begin
   loop
     perform pg_advisory_xact_lock(hashtextextended(v_profile.nome_normalizado, 0));
 
-    insert into public."VENDEDORES" (vendedor, telefone, atender, quantos_lead, ativo)
-    select v_profile.nome, null, 'espera', 0, true
+    insert into public."VENDEDORES" (vendedor, telefone, id_empresa, atender, quantos_lead, ativo)
+    select v_profile.nome, null, 1, 'espera', 0, true
      where not exists (
        select 1
          from public."VENDEDORES" v

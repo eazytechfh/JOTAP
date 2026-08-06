@@ -33,24 +33,30 @@ describe('trigger de novo vendedor e fila de atendimento', () => {
     );
     expect(existingSellerUpdate).not.toMatch(/atender\s*=/i);
     expect(existingSellerUpdate).not.toMatch(/quantos_lead\s*=/i);
+    expect(existingSellerUpdate).not.toMatch(/id_empresa\s*=/i);
   });
 
   it('insere somente vendedor ausente no fim logico da fila', () => {
     expect(sql).toMatch(
-      /insert into public\."VENDEDORES"\s*\(vendedor, telefone, atender, quantos_lead, ativo\)[\s\S]*?values\s*\(v_nome,[\s\S]*?'espera',\s*0,\s*true\)/i
+      /insert into public\."VENDEDORES"\s*\(vendedor, telefone, id_empresa, atender, quantos_lead, ativo\)[\s\S]*?values\s*\(v_nome,\s*v_telefone,\s*1,\s*'espera',\s*0,\s*true\)/i
     );
   });
 
   it('reconcilia perfis vendedores ativos que ainda nao possuem linha operacional', () => {
-    expect(sql).toMatch(
+    const backfillBlock = sql.match(/do \$\$[\s\S]*?\$\$;/i)?.[0] ?? '';
+
+    expect(backfillBlock).toMatch(
       /from public\.profiles p[\s\S]*?p\.cargo = 'vendedor'[\s\S]*?p\.desativado = false[\s\S]*?not exists[\s\S]*?from public\."VENDEDORES" v/is
     );
-    expect(sql).toMatch(
+    expect(backfillBlock).toMatch(
       /lower\(trim\(v\.vendedor\)\)\s*=\s*v_profile\.nome_normalizado/i
     );
-    expect(sql).toMatch(/distinct on \(lower\(trim\(p\.nome\)\)\)/i);
-    expect(sql).toMatch(
+    expect(backfillBlock).toMatch(/distinct on \(lower\(trim\(p\.nome\)\)\)/i);
+    expect(backfillBlock).toMatch(
       /pg_advisory_xact_lock\(hashtextextended\(v_profile\.nome_normalizado, 0\)\)/i
+    );
+    expect(backfillBlock).toMatch(
+      /insert into public\."VENDEDORES"\s*\(vendedor, telefone, id_empresa, atender, quantos_lead, ativo\)[\s\S]*?select v_profile\.nome,\s*null,\s*1,\s*'espera',\s*0,\s*true/i
     );
   });
 });

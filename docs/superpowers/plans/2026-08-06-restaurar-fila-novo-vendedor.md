@@ -14,6 +14,7 @@
 - Linhas existentes em `VENDEDORES` não podem ter `atender` nem `quantos_lead` alterados.
 - O cargo deve continuar vindo de `raw_app_meta_data` e ser validado pela lista permitida.
 - A migração deve ser idempotente e segura para bancos com ou sem vendedores órfãos.
+- Novas linhas operacionais devem usar `id_empresa = 1`, conforme o tenant único presente em `VENDEDORES` e `BASE_DE_LEADS`.
 
 ---
 
