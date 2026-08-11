@@ -496,6 +496,33 @@ function GerenciarUsuariosTab() {
     setProfiles((prev) => prev.map((p) => (p.id === id ? { ...p, desativado: desativarAgora } : p)));
   }
 
+  async function excluirUsuario(id: string, nome: string | null, email: string) {
+    const acao = 'Excluir usuário';
+    const confirmado = window.confirm(
+      `${acao} ${nome ?? email}? Esta ação é permanente e apagará o acesso e os dados de usuário.`
+    );
+    if (!confirmado) return;
+
+    setAcaoEmAndamento(`delete-${id}`);
+    setMensagemErro(null);
+
+    try {
+      const response = await fetch(`/api/users/${id}`, { method: 'DELETE' });
+      const data = (await response.json().catch(() => ({}))) as { error?: string };
+
+      if (!response.ok) {
+        setMensagemErro(data.error ?? 'Erro ao excluir usuário.');
+        return;
+      }
+
+      setProfiles((prev) => prev.filter((p) => p.id !== id));
+    } catch {
+      setMensagemErro('Falha de conexão ao excluir usuário. Tente novamente.');
+    } finally {
+      setAcaoEmAndamento(null);
+    }
+  }
+
   async function resetarSenha(id: string, email: string) {
     setAcaoEmAndamento(`reset-${id}`);
     setMensagemErro(null);
@@ -583,6 +610,14 @@ function GerenciarUsuariosTab() {
                       : p.desativado
                         ? 'Reativar'
                         : 'Desativar'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => excluirUsuario(p.id, p.nome, p.email)}
+                    disabled={acaoEmAndamento === `delete-${p.id}` || p.cargo === 'admin_master'}
+                    className="rounded-lg border border-red-500 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-60"
+                  >
+                    {acaoEmAndamento === `delete-${p.id}` ? 'Excluindo...' : 'Excluir'}
                   </button>
                 </td>
               </tr>
@@ -736,7 +771,8 @@ function FilaAtendimentoTab() {
       const supabase = createClient();
       const { data, error } = await supabase
         .from('VENDEDORES')
-        .select('id, created_at, vendedor, telefone, atender, quantos_lead, id_click, id_empresa')
+        .select('id, created_at, vendedor, telefone, atender, quantos_lead, id_click, id_empresa, ativo')
+        .eq('ativo', true)
         .order('id', { ascending: true });
 
       if (error) {

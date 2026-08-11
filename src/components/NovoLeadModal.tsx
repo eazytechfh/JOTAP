@@ -62,7 +62,8 @@ export function NovoLeadModal({ onClose, onCreated }: NovoLeadModalProps) {
       const supabase = createClient();
       const { data } = await supabase
         .from('VENDEDORES')
-        .select('id, created_at, vendedor, telefone, atender, quantos_lead, id_click, id_empresa')
+        .select('id, created_at, vendedor, telefone, atender, quantos_lead, id_click, id_empresa, ativo')
+        .eq('ativo', true)
         .order('vendedor');
       if (isMounted) setVendedores((data as Vendedor[]) ?? []);
     }

@@ -80,6 +80,7 @@ export interface Vendedor {
   quantos_lead: number | null;
   id_click: string | null;
   id_empresa: string | null;
+  ativo: boolean;
 }
 
 export interface Estoque {

@@ -30,6 +30,20 @@ export async function POST(request: Request, { params }: { params: { id: string 
   const desativar = body.desativar !== false;
 
   const admin = createAdminClient();
+  const { data: targetProfile, error: targetError } = await admin
+    .from('profiles')
+    .select('cargo')
+    .eq('id', params.id)
+    .single();
+
+  if (targetError || !targetProfile) {
+    return NextResponse.json({ error: 'Usuário não encontrado.' }, { status: 404 });
+  }
+
+  if ((targetProfile as { cargo: string }).cargo === 'admin_master') {
+    return NextResponse.json({ error: 'A conta admin master não pode ser desativada.' }, { status: 403 });
+  }
+
   // ban_duration grande (~100 anos) é usado como "desativação" permanente, já que o Supabase
   // Auth não possui um campo nativo de "ativo/inativo" — apenas suspensão temporária por duração.
   // "none" remove o ban e reativa o login normalmente.
@@ -41,36 +55,16 @@ export async function POST(request: Request, { params }: { params: { id: string 
     return NextResponse.json({ error: authError.message }, { status: 400 });
   }
 
-  const { error: profileError } = await admin
-    .from('profiles')
-    .update({ desativado: desativar })
-    .eq('id', params.id);
+  const { error: statusError } = await admin.rpc('set_user_disabled', {
+    p_user_id: params.id,
+    p_disabled: desativar,
+  });
 
-  if (profileError) {
-    return NextResponse.json({ error: profileError.message }, { status: 400 });
-  }
-
-  // VENDEDORES é operacional e guarda contagem/histórico. Nunca removemos nem recriamos a linha:
-  // apenas alteramos os campos de disponibilidade adicionados pela migration JOTAP.
-  const { data: targetProfile } = await admin
-    .from('profiles')
-    .select('cargo, nome')
-    .eq('id', params.id)
-    .single();
-
-  const targetCargo = (targetProfile as { cargo: string; nome: string | null } | null)?.cargo;
-  const targetNome = (targetProfile as { cargo: string; nome: string | null } | null)?.nome;
-
-  if (targetCargo === 'vendedor' && targetNome) {
-    const { error: sellerError } = await admin
-      .from('VENDEDORES')
-      .update({ ativo: !desativar, atender: desativar ? 'inativo' : 'espera' })
-      .eq('vendedor', targetNome);
-    if (sellerError) {
-      await admin.auth.admin.updateUserById(params.id, { ban_duration: desativar ? 'none' : '876000h' });
-      await admin.from('profiles').update({ desativado: !desativar }).eq('id', params.id);
-      return NextResponse.json({ error: sellerError.message }, { status: 400 });
-    }
+  if (statusError) {
+    await admin.auth.admin.updateUserById(params.id, {
+      ban_duration: desativar ? 'none' : '876000h',
+    });
+    return NextResponse.json({ error: statusError.message }, { status: 400 });
   }
 
   return NextResponse.json({ success: true, desativado: desativar });

@@ -102,7 +102,11 @@ export function LeadDrawer({
         await Promise.all([
           supabase.from('etiquetas').select('id, nome, cor, created_at').order('nome'),
           supabase.from('lead_etiquetas').select('id_etiqueta').eq('id_lead', lead.id),
-          supabase.from('VENDEDORES').select('id, created_at, vendedor, telefone, atender, quantos_lead, id_click, id_empresa').order('vendedor'),
+          supabase
+            .from('VENDEDORES')
+            .select('id, created_at, vendedor, telefone, atender, quantos_lead, id_click, id_empresa, ativo')
+            .eq('ativo', true)
+            .order('vendedor'),
           supabase
             .from('lead_historico_estagio')
             .select('id, id_lead, estagio_anterior, estagio_novo, usuario, created_at')
