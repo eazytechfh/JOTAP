@@ -772,7 +772,6 @@ function FilaAtendimentoTab() {
       const { data, error } = await supabase
         .from('VENDEDORES')
         .select('id, created_at, vendedor, telefone, atender, quantos_lead, id_click, id_empresa, ativo')
-        .eq('ativo', true)
         .order('id', { ascending: true });
 
       if (error) {
@@ -793,9 +792,11 @@ function FilaAtendimentoTab() {
   // a próxima rodada. A ordem de espera segue o id de cadastro (não há coluna de posição
   // explícita na tabela hoje).
   const normalizado = (v: string | null) => (v ?? '').toLowerCase().trim();
-  const daVez = vendedores.filter((v) => normalizado(v.atender) === 'vez');
-  const emEspera = vendedores.filter((v) => normalizado(v.atender) === 'espera');
-  const outros = vendedores.filter(
+  const ativos = vendedores.filter((v) => v.ativo);
+  const desativados = vendedores.filter((v) => !v.ativo);
+  const daVez = ativos.filter((v) => normalizado(v.atender) === 'vez');
+  const emEspera = ativos.filter((v) => normalizado(v.atender) === 'espera');
+  const outros = ativos.filter(
     (v) => !['vez', 'espera'].includes(normalizado(v.atender))
   );
 
@@ -874,6 +875,31 @@ function FilaAtendimentoTab() {
                   <p className="text-xs text-gray-500">{v.telefone ?? '—'}</p>
                 </div>
                 <span className="text-xs text-gray-400">atender: {v.atender ?? '—'}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {desativados.length > 0 && (
+        <section>
+          <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400">
+            Vendedores desativados
+          </h2>
+          <ul className="space-y-2">
+            {desativados.map((v) => (
+              <li
+                key={v.id}
+                className="flex items-center gap-3 rounded-xl border border-red-100 bg-red-50/60 p-3"
+              >
+                <Avatar name={v.vendedor ?? '?'} size={32} />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-gray-600">{v.vendedor}</p>
+                  <p className="text-xs text-gray-400">{v.telefone ?? '—'}</p>
+                </div>
+                <span className="rounded-full bg-red-100 px-2.5 py-1 text-xs font-medium text-red-700">
+                  Desativado
+                </span>
               </li>
             ))}
           </ul>

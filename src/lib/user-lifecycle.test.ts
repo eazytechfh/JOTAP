@@ -36,9 +36,14 @@ describe('ciclo de vida de usuarios', () => {
     expect(banRoute).toContain("admin.rpc('set_user_disabled'");
   });
 
-  it('lista na fila somente vendedores ativos', () => {
+  it('mantem inativos visiveis na fila, separados dos vendedores ativos', () => {
     expect(settingsPage).toContain(".select('id, created_at, vendedor, telefone, atender, quantos_lead, id_click, id_empresa, ativo')");
-    expect(settingsPage).toMatch(/\.eq\('ativo', true\)[\s\S]*?\.order\('id'/);
+    expect(settingsPage).not.toMatch(
+      /from\('VENDEDORES'\)[\s\S]*?\.eq\('ativo', true\)[\s\S]*?\.order\('id'/
+    );
+    expect(settingsPage).toContain('const ativos = vendedores.filter((v) => v.ativo)');
+    expect(settingsPage).toContain('const desativados = vendedores.filter((v) => !v.ativo)');
+    expect(settingsPage).toContain('Vendedores desativados');
     expect(newLeadModal).toMatch(/from\('VENDEDORES'\)[\s\S]*?\.eq\('ativo', true\)/);
     expect(leadDrawer).toMatch(/from\('VENDEDORES'\)[\s\S]*?\.eq\('ativo', true\)/);
   });
