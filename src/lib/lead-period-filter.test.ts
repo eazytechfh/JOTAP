@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   DATA_REFERENCIA_OPTIONS,
+  getCustomDateBoundaries,
+  getDefaultCustomDateRange,
+  getPreviousDateBoundaries,
   isLeadWithinPeriod,
   type LeadActivityDates,
 } from './lead-period-filter';
@@ -50,5 +53,77 @@ describe('isLeadWithinPeriod', () => {
 
   it('não restringe resultados quando o período é todos', () => {
     expect(isLeadWithinPeriod('2025-11-28T12:30:00-03:00', undefined, 'todos', 'ultima_atualizacao', now)).toBe(true);
+  });
+
+  it('interpreta o intervalo personalizado como dias locais completos e inclusivos', () => {
+    const range = getCustomDateBoundaries({ start: '2026-07-30', end: '2026-08-02' });
+
+    expect(range?.start.getFullYear()).toBe(2026);
+    expect(range?.start.getMonth()).toBe(6);
+    expect(range?.start.getDate()).toBe(30);
+    expect(range?.start.getHours()).toBe(0);
+    expect(range?.end.getDate()).toBe(2);
+    expect(range?.end.getHours()).toBe(23);
+    expect(range?.end.getMilliseconds()).toBe(999);
+
+    expect(isLeadWithinPeriod(
+      '2026-07-30T00:00:00-03:00', undefined, 'personalizado', 'criacao', now,
+      { start: '2026-07-30', end: '2026-08-02' }
+    )).toBe(true);
+    expect(isLeadWithinPeriod(
+      '2026-08-02T23:59:59.999-03:00', undefined, 'personalizado', 'criacao', now,
+      { start: '2026-07-30', end: '2026-08-02' }
+    )).toBe(true);
+    expect(isLeadWithinPeriod(
+      '2026-08-03T00:00:00-03:00', undefined, 'personalizado', 'criacao', now,
+      { start: '2026-07-30', end: '2026-08-02' }
+    )).toBe(false);
+  });
+
+  it('recusa intervalo personalizado incompleto ou invertido', () => {
+    expect(getCustomDateBoundaries({ start: '', end: '2026-08-02' })).toBeNull();
+    expect(getCustomDateBoundaries({ start: '2026-08-03', end: '2026-08-02' })).toBeNull();
+    expect(isLeadWithinPeriod(
+      '2026-08-02T12:00:00-03:00', undefined, 'personalizado', 'criacao', now,
+      { start: '2026-08-03', end: '2026-08-02' }
+    )).toBe(false);
+  });
+
+  it('calcula para o dashboard o periodo anterior com a mesma duracao', () => {
+    const current = getCustomDateBoundaries({ start: '2026-07-30', end: '2026-08-02' });
+    expect(current).not.toBeNull();
+
+    const previous = getPreviousDateBoundaries(current!);
+    expect(previous.start.getFullYear()).toBe(2026);
+    expect(previous.start.getMonth()).toBe(6);
+    expect(previous.start.getDate()).toBe(26);
+    expect(previous.start.getHours()).toBe(0);
+    expect(previous.end.getDate()).toBe(29);
+    expect(previous.end.getHours()).toBe(23);
+    expect(previous.end.getMilliseconds()).toBe(999);
+  });
+
+  it('oferece por padrao os ultimos sete dias em formato local', () => {
+    expect(getDefaultCustomDateRange(now)).toEqual({
+      start: '2026-07-28',
+      end: '2026-08-03',
+    });
+  });
+
+  it('preserva dias locais completos ao atravessar horario de verao', () => {
+    const originalTimezone = process.env.TZ;
+    process.env.TZ = 'America/New_York';
+    try {
+      const current = getCustomDateBoundaries({ start: '2026-03-08', end: '2026-03-09' });
+      expect(current).not.toBeNull();
+      const previous = getPreviousDateBoundaries(current!);
+      expect(previous.start.getDate()).toBe(6);
+      expect(previous.start.getHours()).toBe(0);
+      expect(previous.end.getDate()).toBe(7);
+      expect(previous.end.getHours()).toBe(23);
+      expect(previous.end.getMilliseconds()).toBe(999);
+    } finally {
+      process.env.TZ = originalTimezone;
+    }
   });
 });

@@ -4,6 +4,7 @@ import type { BaseDeLeads, Etiqueta } from '@/types/database';
 import { isDentroExpediente } from '@/lib/expediente';
 import type { PillOption } from '@/components/PillFilter';
 import {
+  getDefaultCustomDateRange,
   isLeadWithinPeriod,
   type DataReferencia,
   type Periodo,
@@ -19,6 +20,7 @@ export const PERIODO_OPTIONS: PillOption<Periodo>[] = [
   { value: '7d', label: '7 dias' },
   { value: '30d', label: '30 dias' },
   { value: '90d', label: '90 dias' },
+  { value: 'personalizado', label: 'Personalizado' },
   { value: 'todos', label: 'Todos' },
 ];
 
@@ -35,6 +37,8 @@ export function useLeadFilters(leads: BaseDeLeads[], enableActivityDates = false
   const [veiculoFiltro, setVeiculoFiltro] = useState('todos');
   const [etiquetaFiltro, setEtiquetaFiltro] = useState('todas');
   const [periodo, setPeriodo] = useState<Periodo>('todos');
+  const [customStart, setCustomStart] = useState(() => getDefaultCustomDateRange().start);
+  const [customEnd, setCustomEnd] = useState(() => getDefaultCustomDateRange().end);
   const [dataReferencia, setDataReferencia] = useState<DataReferencia>('criacao');
   const [expediente, setExpediente] = useState<Expediente>('todos');
   const [etiquetasDisponiveis, setEtiquetasDisponiveis] = useState<Etiqueta[]>([]);
@@ -160,7 +164,14 @@ export function useLeadFilters(leads: BaseDeLeads[], enableActivityDates = false
         if (!etiquetasPorLead.get(lead.id)?.has(idEtiqueta)) return false;
       }
 
-      if (!isLeadWithinPeriod(lead.created_at, atividadePorLead.get(lead.id), periodo, dataReferencia)) return false;
+      if (!isLeadWithinPeriod(
+        lead.created_at,
+        atividadePorLead.get(lead.id),
+        periodo,
+        dataReferencia,
+        new Date(),
+        { start: customStart, end: customEnd }
+      )) return false;
 
       if (expediente !== 'todos') {
         const dentro = isDentroExpediente(new Date(lead.created_at));
@@ -179,6 +190,8 @@ export function useLeadFilters(leads: BaseDeLeads[], enableActivityDates = false
     etiquetaFiltro,
     etiquetasPorLead,
     periodo,
+    customStart,
+    customEnd,
     dataReferencia,
     atividadePorLead,
     expediente,
@@ -191,6 +204,9 @@ export function useLeadFilters(leads: BaseDeLeads[], enableActivityDates = false
     setVeiculoFiltro('todos');
     setEtiquetaFiltro('todas');
     setPeriodo('todos');
+    const defaultCustomRange = getDefaultCustomDateRange();
+    setCustomStart(defaultCustomRange.start);
+    setCustomEnd(defaultCustomRange.end);
     setDataReferencia('criacao');
     setExpediente('todos');
   }
@@ -208,6 +224,10 @@ export function useLeadFilters(leads: BaseDeLeads[], enableActivityDates = false
     setEtiquetaFiltro,
     periodo,
     setPeriodo,
+    customStart,
+    customEnd,
+    setCustomStart,
+    setCustomEnd,
     dataReferencia,
     setDataReferencia,
     activityLoading,

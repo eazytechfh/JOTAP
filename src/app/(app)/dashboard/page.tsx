@@ -30,20 +30,32 @@ import {
   sumCurrentNegotiationValue,
 } from '@/lib/dashboard-metrics';
 import { useLeadActivityDates } from '@/hooks/useLeadActivityDates';
+import { CustomDateRangePicker } from '@/components/CustomDateRangePicker';
+import {
+  getCustomDateBoundaries,
+  getDefaultCustomDateRange,
+  getPreviousDateBoundaries,
+  type CustomDateRange,
+  type Periodo,
+} from '@/lib/lead-period-filter';
 
-type Periodo = 'hoje' | 'ontem' | '7d' | '30d' | '90d';
+type DashboardPeriodo = Exclude<Periodo, 'todos'>;
 
-const PERIODO_OPTIONS: PillOption<Periodo>[] = [
+const PERIODO_OPTIONS: PillOption<DashboardPeriodo>[] = [
   { value: 'hoje', label: 'Hoje' },
   { value: 'ontem', label: 'Ontem' },
   { value: '7d', label: '7 dias' },
   { value: '30d', label: '30 dias' },
   { value: '90d', label: '90 dias' },
+  { value: 'personalizado', label: 'Personalizado' },
 ];
 
 // Decisão de horário comercial fixo (não há configuração de expediente no banco hoje):
 
-function getPeriodoRange(periodo: Periodo): { start: Date; end: Date; prevStart: Date; prevEnd: Date } {
+function getPeriodoRange(
+  periodo: DashboardPeriodo,
+  customRange: CustomDateRange
+): { start: Date; end: Date; prevStart: Date; prevEnd: Date } {
   const now = new Date();
 
   switch (periodo) {
@@ -82,6 +94,17 @@ function getPeriodoRange(periodo: Periodo): { start: Date; end: Date; prevStart:
       const prevEnd = endOfDay(subDays(now, 90));
       return { start, end, prevStart, prevEnd };
     }
+    case 'personalizado': {
+      const currentRange = getCustomDateBoundaries(customRange);
+      if (!currentRange) throw new RangeError('Intervalo personalizado inválido.');
+      const previousRange = getPreviousDateBoundaries(currentRange);
+      return {
+        start: currentRange.start,
+        end: currentRange.end,
+        prevStart: previousRange.start,
+        prevEnd: previousRange.end,
+      };
+    }
   }
 }
 
@@ -96,7 +119,9 @@ export default function DashboardPage() {
   const [leads, setLeads] = useState<BaseDeLeads[]>([]);
   const [activityLeads, setActivityLeads] = useState<BaseDeLeads[]>([]);
   const [loading, setLoading] = useState(true);
-  const [periodo, setPeriodo] = useState<Periodo>('7d');
+  const [periodo, setPeriodo] = useState<DashboardPeriodo>('7d');
+  const [customStart, setCustomStart] = useState(() => getDefaultCustomDateRange().start);
+  const [customEnd, setCustomEnd] = useState(() => getDefaultCustomDateRange().end);
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const [duplicateCount, setDuplicateCount] = useState(0);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -155,7 +180,10 @@ export default function DashboardPage() {
     };
   }, []);
 
-  const { start, end, prevStart, prevEnd } = useMemo(() => getPeriodoRange(periodo), [periodo]);
+  const { start, end, prevStart, prevEnd } = useMemo(
+    () => getPeriodoRange(periodo, { start: customStart, end: customEnd }),
+    [customEnd, customStart, periodo]
+  );
 
   const leadsNoPeriodo = useMemo(
     () =>
@@ -310,7 +338,17 @@ export default function DashboardPage() {
             )}
           </p>
         </div>
-        <PillFilter options={PERIODO_OPTIONS} selected={periodo} onChange={setPeriodo} />
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <PillFilter options={PERIODO_OPTIONS} selected={periodo} onChange={setPeriodo} />
+          {periodo === 'personalizado' && (
+            <CustomDateRangePicker
+              start={customStart}
+              end={customEnd}
+              onStartChange={setCustomStart}
+              onEndChange={setCustomEnd}
+            />
+          )}
+        </div>
       </div>
 
       {loading ? (
