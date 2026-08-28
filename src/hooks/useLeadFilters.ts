@@ -14,6 +14,14 @@ import { useLeadActivityDates } from '@/hooks/useLeadActivityDates';
 export type { DataReferencia, Periodo } from '@/lib/lead-period-filter';
 export type Expediente = 'todos' | 'dentro' | 'fora';
 
+export const SEM_VENDEDOR_FILTER_VALUE = 'sem-vendedor';
+
+export function matchesVendedorFilter(vendedor: string | null, filtro: string): boolean {
+  if (filtro === 'todos') return true;
+  if (filtro === SEM_VENDEDOR_FILTER_VALUE) return !vendedor;
+  return vendedor === filtro;
+}
+
 export const PERIODO_OPTIONS: PillOption<Periodo>[] = [
   { value: 'hoje', label: 'Hoje' },
   { value: 'ontem', label: 'Ontem' },
@@ -156,7 +164,7 @@ export function useLeadFilters(leads: BaseDeLeads[], enableActivityDates = false
       }
 
       if (origemFiltro !== 'todas' && lead.origem !== origemFiltro) return false;
-      if (vendedorFiltro !== 'todos' && lead.vendedor !== vendedorFiltro) return false;
+      if (!matchesVendedorFilter(lead.vendedor, vendedorFiltro)) return false;
       if (veiculoFiltro !== 'todos' && lead.veiculo_interesse !== veiculoFiltro) return false;
 
       if (etiquetaFiltro !== 'todas') {
