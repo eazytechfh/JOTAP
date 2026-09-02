@@ -9,6 +9,20 @@
   --color-texto: #111827;
   --color-primaria: #111827;
   --color-secundaria: #3b82f6;
+  --color-cartao: #ffffff;
+  --color-fundo-ativo: var(--color-fundo);
+  --color-texto-ativo: var(--color-texto);
+  --color-primaria-ativa: var(--color-primaria);
+  --color-secundaria-ativa: var(--color-secundaria);
+}
+
+.dark {
+  color-scheme: dark;
+  --color-cartao: #1c2128;
+  --color-fundo-ativo: #0f1117;
+  --color-texto-ativo: #f3f4f6;
+  --color-primaria-ativa: color-mix(in oklab, var(--color-primaria), white 35%);
+  --color-secundaria-ativa: color-mix(in oklab, var(--color-secundaria), white 15%);
 }
 
 @keyframes automotive-drive { 0%,100% { transform: translateX(-8px); } 50% { transform: translateX(8px); } }
@@ -28,9 +42,34 @@
 
 html,
 body {
-  background-color: var(--color-fundo);
-  color: var(--color-texto);
+  background-color: var(--color-fundo-ativo);
+  color: var(--color-texto-ativo);
 }
+
+.dark select { color-scheme: dark; }
+.dark select option { background-color: #1c2128; color: #f3f4f6; }
+
+/* Compatibilidade escura para as superfícies legadas. Os componentes novos usam tokens/dark:;
+   estas regras cobrem telas existentes sem alterar as cores semânticas de status. */
+.dark .bg-white { background-color: #1c2128 !important; }
+.dark .bg-gray-50 { background-color: #161b22 !important; }
+.dark .bg-gray-100 { background-color: #21262d !important; }
+.dark .border-gray-100 { border-color: #21262d !important; }
+.dark .border-gray-200 { border-color: #30363d !important; }
+.dark .border-gray-300 { border-color: #484f58 !important; }
+.dark .text-gray-900,
+.dark .text-gray-800,
+.dark .text-gray-700 { color: #e5e7eb !important; }
+.dark .text-gray-600 { color: #cbd5e1 !important; }
+.dark .text-gray-500 { color: #9ca3af !important; }
+.dark .text-gray-400 { color: #94a3b8 !important; }
+.dark input,
+.dark textarea,
+.dark select { background-color: #161b22; color: #f3f4f6; border-color: #484f58; }
+.dark input::placeholder,
+.dark textarea::placeholder { color: #6b7280; }
+.dark .hover\:bg-gray-50:hover { background-color: #21262d !important; }
+.dark .hover\:bg-gray-100:hover { background-color: #30363d !important; }
 
 * {
   box-sizing: border-box;

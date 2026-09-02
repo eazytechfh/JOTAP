@@ -37,6 +37,11 @@ export default function LeadsPage() {
   const [leadSelecionado, setLeadSelecionado] = useState<BaseDeLeads | null>(null);
   const [duplicateCount, setDuplicateCount] = useState(0);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [leadsSelecionados, setLeadsSelecionados] = useState<Set<number>>(() => new Set());
+  const [podeRedistribuir, setPodeRedistribuir] = useState(false);
+  const [redistribuindo, setRedistribuindo] = useState(false);
+  const [mensagemRedistribuicao, setMensagemRedistribuicao] = useState<{ tipo: 'sucesso' | 'erro'; texto: string } | null>(null);
+  const selecionarTodosRef = useRef<HTMLInputElement>(null);
   const { etapas } = usePipelineEtapas();
   const filters = useLeadFilters(leads);
   const { leadsFiltrados } = filters;
@@ -83,6 +88,61 @@ export default function LeadsPage() {
       window.removeEventListener('lead-assignments-changed', refresh);
     };
   }, []);
+
+  useEffect(() => {
+    async function carregarPermissao() {
+      const supabase = createClient();
+      const { data: auth } = await supabase.auth.getUser();
+      if (!auth.user) return;
+      const { data } = await supabase.from('profiles').select('cargo').eq('id', auth.user.id).single();
+      setPodeRedistribuir(['admin_master', 'admin', 'gerente'].includes((data as { cargo?: string } | null)?.cargo ?? ''));
+    }
+    void carregarPermissao();
+  }, []);
+
+  const todosFiltradosSelecionados = leadsFiltrados.length > 0 && leadsFiltrados.every((lead) => leadsSelecionados.has(lead.id));
+  const algunsFiltradosSelecionados = leadsFiltrados.some((lead) => leadsSelecionados.has(lead.id));
+
+  useEffect(() => {
+    if (selecionarTodosRef.current) selecionarTodosRef.current.indeterminate = algunsFiltradosSelecionados && !todosFiltradosSelecionados;
+  }, [algunsFiltradosSelecionados, todosFiltradosSelecionados]);
+
+  function alternarLeadSelecionado(leadId: number) {
+    setLeadsSelecionados((atuais) => {
+      const proximos = new Set(atuais);
+      proximos.has(leadId) ? proximos.delete(leadId) : proximos.add(leadId);
+      return proximos;
+    });
+  }
+
+  function alternarTodosFiltrados() {
+    setLeadsSelecionados((atuais) => {
+      const proximos = new Set(atuais);
+      leadsFiltrados.forEach((lead) => todosFiltradosSelecionados ? proximos.delete(lead.id) : proximos.add(lead.id));
+      return proximos;
+    });
+  }
+
+  async function redistribuirSelecionados() {
+    if (leadsSelecionados.size === 0 || redistribuindo) return;
+    const ids = [...leadsSelecionados];
+    if (!window.confirm(`Redistribuir igualmente ${ids.length} lead(s) entre todos os vendedores ativos?`)) return;
+    setRedistribuindo(true);
+    setMensagemRedistribuicao(null);
+    const { data, error } = await createClient().rpc('redistribuir_leads', { p_lead_ids: ids });
+    if (error) {
+      setMensagemRedistribuicao({ tipo: 'erro', texto: error.message });
+      setRedistribuindo(false);
+      return;
+    }
+    const assignments = (data ?? []) as Array<{ lead_id: number; vendedor: string }>;
+    const sellerByLead = new Map(assignments.map((item) => [Number(item.lead_id), item.vendedor]));
+    setLeads((atuais) => atuais.map((lead) => sellerByLead.has(lead.id) ? { ...lead, vendedor: sellerByLead.get(lead.id)! } : lead));
+    setLeadsSelecionados(new Set());
+    setMensagemRedistribuicao({ tipo: 'sucesso', texto: `${assignments.length} lead(s) redistribuído(s) com sucesso.` });
+    setRedistribuindo(false);
+    window.dispatchEvent(new Event('lead-assignments-changed'));
+  }
 
   function exportarCsv() {
     const headers = ['Nome', 'Telefone', 'Email', 'Origem', 'Vendedor', 'Veículo', 'Estágio', 'Valor', 'Criado em'];
@@ -154,8 +214,23 @@ export default function LeadsPage() {
 
       <LeadFiltersBar filters={filters} />
 
+      {podeRedistribuir && (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-gray-200 bg-card p-3 shadow-sm dark:border-gray-700">
+          <button type="button" onClick={alternarTodosFiltrados} disabled={leadsFiltrados.length === 0 || redistribuindo} className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800">
+            {todosFiltradosSelecionados ? 'Desmarcar filtrados' : 'Selecionar todos os filtrados'}
+          </button>
+          <span className="text-sm text-gray-600 dark:text-gray-300">{leadsSelecionados.size} selecionado(s)</span>
+          <button type="button" onClick={() => void redistribuirSelecionados()} disabled={leadsSelecionados.size === 0 || redistribuindo} className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50">
+            {redistribuindo ? 'Redistribuindo...' : 'Redistribuir igualmente'}
+          </button>
+          {leadsSelecionados.size > 0 && <button type="button" onClick={() => setLeadsSelecionados(new Set())} disabled={redistribuindo} className="text-sm text-gray-500 hover:text-foreground">Limpar seleção</button>}
+          {mensagemRedistribuicao && <p role="status" className={`w-full text-sm ${mensagemRedistribuicao.tipo === 'sucesso' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>{mensagemRedistribuicao.texto}</p>}
+        </div>
+      )}
+
       <div className="rounded-xl bg-card shadow-sm">
-        <div className="grid grid-cols-[1.5fr_1fr_1fr_1fr_1fr_0.8fr] gap-2 border-b border-gray-200 px-4 py-3 text-xs font-semibold uppercase text-gray-500">
+        <div className="grid grid-cols-[32px_1.5fr_1fr_1fr_1fr_1fr_0.8fr] gap-2 border-b border-gray-200 px-4 py-3 text-xs font-semibold uppercase text-gray-500 dark:border-gray-700 dark:text-gray-400">
+          <input ref={selecionarTodosRef} type="checkbox" checked={todosFiltradosSelecionados} onChange={alternarTodosFiltrados} disabled={!podeRedistribuir || leadsFiltrados.length === 0} aria-label="Selecionar todos os leads filtrados" className="h-4 w-4 accent-primary disabled:invisible" />
           <span>Lead</span>
           <span>Origem</span>
           <span>Vendedor</span>
@@ -177,9 +252,10 @@ export default function LeadsPage() {
                   <div
                     key={lead.id}
                     onClick={() => setLeadSelecionado(lead)}
-                    className="absolute left-0 top-0 grid w-full cursor-pointer grid-cols-[1.5fr_1fr_1fr_1fr_1fr_0.8fr] items-center gap-2 border-b border-gray-100 px-4 hover:bg-gray-50"
+                    className={`absolute left-0 top-0 grid w-full cursor-pointer grid-cols-[32px_1.5fr_1fr_1fr_1fr_1fr_0.8fr] items-center gap-2 border-b border-gray-100 px-4 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800/60 ${leadsSelecionados.has(lead.id) ? 'bg-primary/5' : ''}`}
                     style={{ height: virtualRow.size, transform: `translateY(${virtualRow.start}px)` }}
                   >
+                    <input type="checkbox" checked={leadsSelecionados.has(lead.id)} onClick={(event) => event.stopPropagation()} onChange={() => alternarLeadSelecionado(lead.id)} disabled={!podeRedistribuir} aria-label={`Selecionar ${lead.nome_lead}`} className="h-4 w-4 accent-primary disabled:invisible" />
                     <div className="flex items-center gap-3 overflow-hidden">
                       <Avatar name={lead.nome_lead} size={32} />
                       <div className="min-w-0">

@@ -41,3 +41,12 @@ CRM para concessionárias de veículos, construído com Next.js (App Router), Ty
 npm run build
 npm run start
 ```
+
+## Redistribuição de leads e tema
+
+Após aplicar `supabase/migrations/0024_redistribuir_leads.sql`, administradores e gerentes podem
+selecionar leads individualmente ou selecionar todos os resultados dos filtros e usar
+**Redistribuir igualmente**. A operação considera apenas vendedores ativos e é atômica.
+
+O modo claro/escuro fica no menu do usuário na barra lateral. A preferência é salva no navegador;
+quando ainda não existe preferência, o CRM acompanha o tema do sistema operacional.
