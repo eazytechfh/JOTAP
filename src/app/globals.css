@@ -21,8 +21,10 @@
   --color-cartao: #1c2128;
   --color-fundo-ativo: #0f1117;
   --color-texto-ativo: #f3f4f6;
-  --color-primaria-ativa: color-mix(in oklab, var(--color-primaria), white 35%);
-  --color-secundaria-ativa: color-mix(in oklab, var(--color-secundaria), white 15%);
+  /* As cores de marca permanecem idênticas nos dois temas. Clareá-las aqui desbotava
+     principalmente o vermelho configurado pelo cliente. */
+  --color-primaria-ativa: var(--color-primaria);
+  --color-secundaria-ativa: var(--color-secundaria);
 }
 
 @keyframes automotive-drive { 0%,100% { transform: translateX(-8px); } 50% { transform: translateX(8px); } }

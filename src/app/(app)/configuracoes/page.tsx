@@ -813,7 +813,7 @@ function FilaAtendimentoTab() {
             {daVez.map((v) => (
               <div
                 key={v.id}
-                className="flex items-center gap-3 rounded-xl border border-green-200 bg-green-50 p-4"
+                className="flex items-center gap-3 rounded-xl border border-green-200 bg-green-50 p-4 dark:border-green-900 dark:bg-green-950/35"
               >
                 <Avatar name={v.vendedor ?? '?'} size={40} />
                 <div className="min-w-0 flex-1">

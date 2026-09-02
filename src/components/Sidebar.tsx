@@ -152,9 +152,9 @@ export function Sidebar({ userName, userCargo, logoUrl }: SidebarProps) {
       </nav>
 
       <div ref={menuRef} className="relative border-t border-gray-200 px-4 py-4 dark:border-gray-800">
+        <ThemeToggle className="mb-2" />
         {menuAberto && (
           <div className="absolute bottom-full left-4 right-4 mb-2 rounded-lg border border-gray-200 bg-card py-1 shadow-lg dark:border-gray-700">
-            <ThemeToggle />
             <button
               type="button"
               onClick={handleLogout}

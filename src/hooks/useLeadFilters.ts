@@ -10,6 +10,7 @@ import {
   type Periodo,
 } from '@/lib/lead-period-filter';
 import { useLeadActivityDates } from '@/hooks/useLeadActivityDates';
+import { activeSellerNames, type SellerAvailability } from '@/lib/active-sellers';
 
 export type { DataReferencia, Periodo } from '@/lib/lead-period-filter';
 export type Expediente = 'todos' | 'dentro' | 'fora';
@@ -51,6 +52,7 @@ export function useLeadFilters(leads: BaseDeLeads[], enableActivityDates = false
   const [expediente, setExpediente] = useState<Expediente>('todos');
   const [etiquetasDisponiveis, setEtiquetasDisponiveis] = useState<Etiqueta[]>([]);
   const [etiquetasPorLead, setEtiquetasPorLead] = useState<Map<number, Set<number>>>(new Map());
+  const [vendedoresDisponiveis, setVendedoresDisponiveis] = useState<string[]>([]);
   const {
     atividadePorLead,
     activityLoading,
@@ -136,13 +138,31 @@ export function useLeadFilters(leads: BaseDeLeads[], enableActivityDates = false
     };
   }, [leadIds, leadIdsKey, refreshEtiquetas]);
 
+  useEffect(() => {
+    let isMounted = true;
+
+    async function fetchVendedoresAtivos() {
+      const { data, error } = await createClient()
+        .from('VENDEDORES')
+        .select('vendedor, ativo')
+        .eq('ativo', true)
+        .order('vendedor');
+
+      if (!isMounted) return;
+      setVendedoresDisponiveis(error ? [] : activeSellerNames((data as SellerAvailability[]) ?? []));
+    }
+
+    void fetchVendedoresAtivos();
+    const refresh = () => void fetchVendedoresAtivos();
+    window.addEventListener('seller-availability-changed', refresh);
+    return () => {
+      isMounted = false;
+      window.removeEventListener('seller-availability-changed', refresh);
+    };
+  }, []);
+
   const origensDisponiveis = useMemo(
     () => Array.from(new Set(leads.map((l) => l.origem).filter((v): v is string => Boolean(v)))),
-    [leads]
-  );
-
-  const vendedoresDisponiveis = useMemo(
-    () => Array.from(new Set(leads.map((l) => l.vendedor).filter((v): v is string => Boolean(v)))),
     [leads]
   );
 
