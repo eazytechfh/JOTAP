@@ -1,5 +1,6 @@
--- Redistribui um conjunto de leads igualmente entre os vendedores ativos.
--- A função inteira roda na transação da chamada RPC: qualquer validação que falhar desfaz tudo.
+-- Corrige a RPC em bancos onde 0024 já foi aplicada.
+-- BASE_DE_LEADS.vendedor é varchar no schema operacional, enquanto a função
+-- declara vendedor como text; funções RETURNS TABLE exigem tipos idênticos.
 create or replace function public.redistribuir_leads(p_lead_ids bigint[])
 returns table(lead_id bigint, vendedor text)
 language plpgsql
@@ -27,7 +28,6 @@ begin
     raise exception 'Selecione pelo menos um lead.' using errcode = '22023';
   end if;
 
-  -- Serializa redistribuições concorrentes da mesma instalação.
   perform pg_advisory_xact_lock(hashtextextended('redistribuir_leads', 0));
 
   select min(id_empresa), count(*), count(distinct id_empresa)
@@ -87,8 +87,6 @@ begin
      where l.id = a.id
     returning l.id::bigint, l.vendedor
   )
-  -- As tabelas operacionais preexistentes podem usar varchar para vendedor.
-  -- RETURNS TABLE exige o tipo exato declarado, portanto normalize para text.
   select u.id::bigint, u.vendedor::text from updated u order by u.id;
 end;
 $$;
