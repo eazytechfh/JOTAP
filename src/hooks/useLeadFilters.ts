@@ -14,6 +14,7 @@ import { activeSellerNames, type SellerAvailability } from '@/lib/active-sellers
 
 export type { DataReferencia, Periodo } from '@/lib/lead-period-filter';
 export type Expediente = 'todos' | 'dentro' | 'fora';
+export type VendedorStatus = 'todos' | 'ativos' | 'inativos';
 
 export const SEM_VENDEDOR_FILTER_VALUE = 'sem-vendedor';
 
@@ -39,10 +40,17 @@ export const EXPEDIENTE_OPTIONS: PillOption<Expediente>[] = [
   { value: 'fora', label: 'Fora do expediente' },
 ];
 
+export const VENDEDOR_STATUS_OPTIONS: PillOption<VendedorStatus>[] = [
+  { value: 'todos', label: 'Todos' },
+  { value: 'ativos', label: 'Ativos' },
+  { value: 'inativos', label: 'Inativos' },
+];
+
 export function useLeadFilters(leads: BaseDeLeads[], enableActivityDates = false) {
   const [busca, setBusca] = useState('');
   const [origemFiltro, setOrigemFiltro] = useState('todas');
   const [vendedorFiltro, setVendedorFiltro] = useState('todos');
+  const [vendedorStatusFiltro, setVendedorStatusFiltro] = useState<VendedorStatus>('todos');
   const [veiculoFiltro, setVeiculoFiltro] = useState('todos');
   const [etiquetaFiltro, setEtiquetaFiltro] = useState('todas');
   const [periodo, setPeriodo] = useState<Periodo>('todos');
@@ -173,15 +181,26 @@ export function useLeadFilters(leads: BaseDeLeads[], enableActivityDates = false
     [leads]
   );
 
-  // Inclui no filtro vendedores excluídos/inativos que ainda possuem leads atribuídos.
-  // Isso permite que o gerente filtre os leads desses vendedores e use a função de redistribuição.
-  const vendedoresDisponiveis = useMemo(() => {
+  // Conjunto de nomes ativos para lookups O(1)
+  const vendedoresAtivosSet = useMemo(() => new Set(vendedoresAtivos), [vendedoresAtivos]);
+
+  // Vendedores inativos: aparecem em algum lead mas não estão na lista de ativos
+  const vendedoresInativos = useMemo(() => {
     const nomesNosLeads = leads
       .map((l) => l.vendedor?.trim())
-      .filter((v): v is string => Boolean(v));
-    const merged = new Set([...vendedoresAtivos, ...nomesNosLeads]);
-    return [...merged].sort((a, b) => a.localeCompare(b, 'pt-BR'));
-  }, [leads, vendedoresAtivos]);
+      .filter((v): v is string => Boolean(v) && !vendedoresAtivosSet.has(v as string));
+    return [...new Set(nomesNosLeads)].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [leads, vendedoresAtivosSet]);
+
+  // Lista de vendedores exibida no dropdown — restrita ao status selecionado
+  const vendedoresDisponiveis = useMemo(() => {
+    if (vendedorStatusFiltro === 'ativos') return vendedoresAtivos;
+    if (vendedorStatusFiltro === 'inativos') return vendedoresInativos;
+    // 'todos': ativos + inativos ordenados
+    return [...new Set([...vendedoresAtivos, ...vendedoresInativos])].sort((a, b) =>
+      a.localeCompare(b, 'pt-BR')
+    );
+  }, [vendedorStatusFiltro, vendedoresAtivos, vendedoresInativos]);
 
   const leadsFiltrados = useMemo(() => {
     return leads.filter((lead) => {
@@ -195,6 +214,15 @@ export function useLeadFilters(leads: BaseDeLeads[], enableActivityDates = false
       }
 
       if (origemFiltro !== 'todas' && lead.origem !== origemFiltro) return false;
+
+      // Filtro de status do vendedor (ativo / inativo)
+      if (vendedorStatusFiltro !== 'todos') {
+        const nomeVendedor = lead.vendedor?.trim();
+        const eAtivo = nomeVendedor ? vendedoresAtivosSet.has(nomeVendedor) : false;
+        if (vendedorStatusFiltro === 'ativos' && !eAtivo) return false;
+        if (vendedorStatusFiltro === 'inativos' && (eAtivo || !nomeVendedor)) return false;
+      }
+
       if (!matchesVendedorFilter(lead.vendedor, vendedorFiltro)) return false;
       if (veiculoFiltro !== 'todos' && lead.veiculo_interesse !== veiculoFiltro) return false;
 
@@ -224,6 +252,8 @@ export function useLeadFilters(leads: BaseDeLeads[], enableActivityDates = false
     leads,
     busca,
     origemFiltro,
+    vendedorStatusFiltro,
+    vendedoresAtivosSet,
     vendedorFiltro,
     veiculoFiltro,
     etiquetaFiltro,
@@ -240,6 +270,7 @@ export function useLeadFilters(leads: BaseDeLeads[], enableActivityDates = false
     setBusca('');
     setOrigemFiltro('todas');
     setVendedorFiltro('todos');
+    setVendedorStatusFiltro('todos');
     setVeiculoFiltro('todos');
     setEtiquetaFiltro('todas');
     setPeriodo('todos');
@@ -257,6 +288,8 @@ export function useLeadFilters(leads: BaseDeLeads[], enableActivityDates = false
     setOrigemFiltro,
     vendedorFiltro,
     setVendedorFiltro,
+    vendedorStatusFiltro,
+    setVendedorStatusFiltro,
     veiculoFiltro,
     setVeiculoFiltro,
     etiquetaFiltro,
@@ -276,6 +309,7 @@ export function useLeadFilters(leads: BaseDeLeads[], enableActivityDates = false
     setExpediente,
     origensDisponiveis,
     vendedoresDisponiveis,
+    vendedoresInativos,
     veiculosDisponiveis,
     etiquetasDisponiveis,
     etiquetasPorLead,
