@@ -52,7 +52,8 @@ export function useLeadFilters(leads: BaseDeLeads[], enableActivityDates = false
   const [expediente, setExpediente] = useState<Expediente>('todos');
   const [etiquetasDisponiveis, setEtiquetasDisponiveis] = useState<Etiqueta[]>([]);
   const [etiquetasPorLead, setEtiquetasPorLead] = useState<Map<number, Set<number>>>(new Map());
-  const [vendedoresDisponiveis, setVendedoresDisponiveis] = useState<string[]>([]);
+  // Nomes de vendedores ativos na tabela VENDEDORES (fonte de verdade)
+  const [vendedoresAtivos, setVendedoresAtivos] = useState<string[]>([]);
   const {
     atividadePorLead,
     activityLoading,
@@ -149,7 +150,7 @@ export function useLeadFilters(leads: BaseDeLeads[], enableActivityDates = false
         .order('vendedor');
 
       if (!isMounted) return;
-      setVendedoresDisponiveis(error ? [] : activeSellerNames((data as SellerAvailability[]) ?? []));
+      setVendedoresAtivos(error ? [] : activeSellerNames((data as SellerAvailability[]) ?? []));
     }
 
     void fetchVendedoresAtivos();
@@ -171,6 +172,16 @@ export function useLeadFilters(leads: BaseDeLeads[], enableActivityDates = false
       Array.from(new Set(leads.map((l) => l.veiculo_interesse).filter((v): v is string => Boolean(v)))),
     [leads]
   );
+
+  // Inclui no filtro vendedores excluídos/inativos que ainda possuem leads atribuídos.
+  // Isso permite que o gerente filtre os leads desses vendedores e use a função de redistribuição.
+  const vendedoresDisponiveis = useMemo(() => {
+    const nomesNosLeads = leads
+      .map((l) => l.vendedor?.trim())
+      .filter((v): v is string => Boolean(v));
+    const merged = new Set([...vendedoresAtivos, ...nomesNosLeads]);
+    return [...merged].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [leads, vendedoresAtivos]);
 
   const leadsFiltrados = useMemo(() => {
     return leads.filter((lead) => {
