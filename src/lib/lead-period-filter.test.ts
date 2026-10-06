@@ -41,14 +41,22 @@ describe('isLeadWithinPeriod', () => {
     expect(isLeadWithinPeriod('2025-11-28T12:30:00-03:00', activity, 'ontem', 'qualquer_atividade', now)).toBe(true);
   });
 
-  it('inclui exatamente o início local do período de sete dias', () => {
-    expect(isLeadWithinPeriod('2026-07-27T00:00:00-03:00', undefined, '7d', 'criacao', now)).toBe(true);
-    expect(isLeadWithinPeriod('2026-07-26T23:59:59-03:00', undefined, '7d', 'criacao', now)).toBe(false);
+  it('considera hoje e os seis dias anteriores como sete dias completos', () => {
+    expect(isLeadWithinPeriod('2026-07-28T00:00:00-03:00', undefined, '7d', 'criacao', now)).toBe(true);
+    expect(isLeadWithinPeriod('2026-07-27T23:59:59-03:00', undefined, '7d', 'criacao', now)).toBe(false);
+    expect(isLeadWithinPeriod('2026-08-04T00:00:00-03:00', undefined, '7d', 'criacao', now)).toBe(false);
   });
 
   it('limita ontem entre o início de ontem e o início de hoje', () => {
     expect(isLeadWithinPeriod('2026-08-02T00:00:00-03:00', undefined, 'ontem', 'criacao', now)).toBe(true);
     expect(isLeadWithinPeriod('2026-08-03T00:00:00-03:00', undefined, 'ontem', 'criacao', now)).toBe(false);
+  });
+
+  it('mantém os atalhos de 30 e 90 dias com a quantidade exata de dias', () => {
+    expect(isLeadWithinPeriod('2026-07-05T00:00:00-03:00', undefined, '30d', 'criacao', now)).toBe(true);
+    expect(isLeadWithinPeriod('2026-07-04T23:59:59-03:00', undefined, '30d', 'criacao', now)).toBe(false);
+    expect(isLeadWithinPeriod('2026-05-06T00:00:00-03:00', undefined, '90d', 'criacao', now)).toBe(true);
+    expect(isLeadWithinPeriod('2026-05-05T23:59:59-03:00', undefined, '90d', 'criacao', now)).toBe(false);
   });
 
   it('não restringe resultados quando o período é todos', () => {

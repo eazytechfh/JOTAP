@@ -50,6 +50,13 @@ export function getActiveLeadsInRange(
   );
 }
 
+export function getCreatedLeadsInRange(
+  leads: BaseDeLeads[],
+  range: DateRange
+): BaseDeLeads[] {
+  return leads.filter((lead) => isDateInRange(lead.created_at, range));
+}
+
 export function buildDailyLeadActivity(
   leads: BaseDeLeads[],
   activityByLead: Map<number, LeadActivityDates>,

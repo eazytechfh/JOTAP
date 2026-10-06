@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { BaseDeLeads } from '@/types/database';
 import {
   buildDailyLeadActivity,
+  getCreatedLeadsInRange,
   getActiveLeadsInRange,
   sumCurrentNegotiationValue,
 } from './dashboard-metrics';
@@ -66,6 +67,12 @@ describe('métricas de atividade do dashboard', () => {
   it('inclui nos detalhamentos leads criados ou atualizados no período', () => {
     expect(getActiveLeadsInRange([oldClosedLead, recentLead], activityByLead, range).map((item) => item.id)).toEqual([
       12737,
+      12738,
+    ]);
+  });
+
+  it('usa somente a criação nos detalhamentos que devem coincidir com a pipeline', () => {
+    expect(getCreatedLeadsInRange([oldClosedLead, recentLead], range).map((item) => item.id)).toEqual([
       12738,
     ]);
   });

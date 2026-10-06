@@ -34,6 +34,12 @@ function startOfDaysAgo(now: Date, days: number): Date {
   return boundary;
 }
 
+function endOfCurrentDay(now: Date): Date {
+  const boundary = new Date(now);
+  boundary.setHours(23, 59, 59, 999);
+  return boundary;
+}
+
 function parseLocalDate(value: string, endOfDay: boolean): Date | null {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
   if (!match) return null;
@@ -136,10 +142,10 @@ export function isLeadWithinPeriod(
 
   const daysByPeriod: Record<Exclude<Periodo, 'ontem' | 'personalizado' | 'todos'>, number> = {
     hoje: 0,
-    '7d': 7,
-    '30d': 30,
-    '90d': 90,
+    '7d': 6,
+    '30d': 29,
+    '90d': 89,
   };
 
-  return date >= startOfDaysAgo(now, daysByPeriod[periodo]);
+  return date >= startOfDaysAgo(now, daysByPeriod[periodo]) && date <= endOfCurrentDay(now);
 }

@@ -26,7 +26,7 @@ import { etapaDe } from '@/lib/pipeline-etapas';
 import { isDentroExpediente } from '@/lib/expediente';
 import {
   buildDailyLeadActivity,
-  getActiveLeadsInRange,
+  getCreatedLeadsInRange,
   sumCurrentNegotiationValue,
 } from '@/lib/dashboard-metrics';
 import { useLeadActivityDates } from '@/hooks/useLeadActivityDates';
@@ -186,10 +186,7 @@ export default function DashboardPage() {
   );
 
   const leadsNoPeriodo = useMemo(
-    () =>
-      leads.filter((lead) =>
-        isWithinInterval(new Date(lead.created_at), { start, end })
-      ),
+    () => getCreatedLeadsInRange(leads, { start, end }),
     [leads, start, end]
   );
 
@@ -213,11 +210,6 @@ export default function DashboardPage() {
   const taxaConversaoAnterior = totalLeadsAnterior > 0 ? (fechadosAnterior / totalLeadsAnterior) * 100 : 0;
 
   const valorEmNegociacao = sumCurrentNegotiationValue(leads);
-  const leadsAtivosNoPeriodo = useMemo(
-    () => getActiveLeadsInRange(leads, atividadePorLead, { start, end }),
-    [atividadePorLead, end, leads, start]
-  );
-
   const agora = new Date();
   const dentroExpediente = isDentroExpediente(agora);
   const leadsDentroExpediente = leadsNoPeriodo.filter((l) => isDentroExpediente(new Date(l.created_at)));
@@ -253,7 +245,7 @@ export default function DashboardPage() {
 
   const leadsPorVendedor = useMemo(() => {
     const map = new Map<string, number>();
-    leadsAtivosNoPeriodo.forEach((lead) => {
+    leadsNoPeriodo.forEach((lead) => {
       const key = lead.vendedor || 'Sem vendedor';
       map.set(key, (map.get(key) ?? 0) + 1);
     });
@@ -261,20 +253,20 @@ export default function DashboardPage() {
       .map(([vendedor, total]) => ({ vendedor, total }))
       .sort((a, b) => b.total - a.total)
       .slice(0, 8);
-  }, [leadsAtivosNoPeriodo]);
+  }, [leadsNoPeriodo]);
 
   const origemDosLeads = useMemo(() => {
     const map = new Map<string, number>();
-    leadsAtivosNoPeriodo.forEach((lead) => {
+    leadsNoPeriodo.forEach((lead) => {
       const key = lead.origem || 'Não informado';
       map.set(key, (map.get(key) ?? 0) + 1);
     });
     return Array.from(map.entries()).map(([origem, total]) => ({ origem, total }));
-  }, [leadsAtivosNoPeriodo]);
+  }, [leadsNoPeriodo]);
 
   const leadsPorEstagio = useMemo(() => {
     const map = new Map<string, number>();
-    leadsAtivosNoPeriodo.forEach((lead) => {
+    leadsNoPeriodo.forEach((lead) => {
       const key = (lead.estagio_lead || 'desconhecido').toLowerCase();
       map.set(key, (map.get(key) ?? 0) + 1);
     });
@@ -289,11 +281,11 @@ export default function DashboardPage() {
         };
       })
       .sort((a, b) => b.total - a.total);
-  }, [etapas, leadsAtivosNoPeriodo]);
+  }, [etapas, leadsNoPeriodo]);
 
   const veiculosMaisProcurados = useMemo(() => {
     const map = new Map<string, number>();
-    leadsAtivosNoPeriodo.forEach((lead) => {
+    leadsNoPeriodo.forEach((lead) => {
       if (!lead.veiculo_interesse) return;
       map.set(lead.veiculo_interesse, (map.get(lead.veiculo_interesse) ?? 0) + 1);
     });
@@ -301,7 +293,7 @@ export default function DashboardPage() {
       .map(([veiculo, total]) => ({ veiculo, total }))
       .sort((a, b) => b.total - a.total)
       .slice(0, 8);
-  }, [leadsAtivosNoPeriodo]);
+  }, [leadsNoPeriodo]);
 
   const maxVendedor = Math.max(1, ...leadsPorVendedor.map((v) => v.total));
   const maxEstagio = Math.max(1, ...leadsPorEstagio.map((v) => v.total));

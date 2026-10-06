@@ -117,7 +117,7 @@ describe('pacote CRM automotivo Jotap', () => {
     expect(dashboard).toContain('setActivityLeads(allLeads)');
     expect(dashboard).not.toContain('label="Leads atualizados"');
     expect(dashboard).not.toContain('label="Vendas fechadas"');
-    expect(dashboard).toContain('leadsAtivosNoPeriodo');
+    expect(dashboard).toContain('getCreatedLeadsInRange');
     expect(dashboard).toContain('dataKey="updated"');
   });
 });
