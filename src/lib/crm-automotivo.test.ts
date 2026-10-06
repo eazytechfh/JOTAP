@@ -78,7 +78,7 @@ describe('pacote CRM automotivo Jotap', () => {
   });
 
   it('ignora atualizacoes exclusivamente tecnicas do bot na atividade do lead', () => {
-    const sql = read('supabase/migrations/0025_ignorar_atividade_tecnica_bot.sql');
+    const sql = read('supabase/migrations/0026_ignorar_atividade_tecnica_bot.sql');
     expect(sql).toContain('get_lead_activity_dates');
     expect(sql).toContain("jsonb_array_elements_text(coalesce(logs.detalhes->'campos_alterados', '[]'::jsonb))");
     expect(sql).toContain("campo not in ('bot_ativo', 'bot_ativo_alterado_em', 'updated_at')");
