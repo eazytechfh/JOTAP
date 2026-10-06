@@ -77,6 +77,16 @@ describe('pacote CRM automotivo Jotap', () => {
     expect(sql).toContain('greatest(logs.ultima_atualizacao, history.ultima_movimentacao_historico) as ultima_atualizacao');
   });
 
+  it('ignora atualizacoes exclusivamente tecnicas do bot na atividade do lead', () => {
+    const sql = read('supabase/migrations/0025_ignorar_atividade_tecnica_bot.sql');
+    expect(sql).toContain('get_lead_activity_dates');
+    expect(sql).toContain("jsonb_array_elements_text(coalesce(logs.detalhes->'campos_alterados', '[]'::jsonb))");
+    expect(sql).toContain("campo not in ('bot_ativo', 'bot_ativo_alterado_em', 'updated_at')");
+    expect(sql).toContain("logs.acao = 'lead_criado'");
+    expect(sql).toContain("logs.acao = 'estagio_alterado'");
+    expect(sql).toContain('lead_historico_estagio');
+  });
+
   it('integra a referência de data ao filtro da pipeline', () => {
     const hook = read('src/hooks/useLeadFilters.ts');
     const activityHook = read('src/hooks/useLeadActivityDates.ts');
