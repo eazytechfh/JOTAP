@@ -110,7 +110,6 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
   return NextResponse.json({ success: true });
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- clientes Supabase tipados via genéricos do SDK, sem schema local aqui.
 async function redistribuirIgualmente(admin: any, supabase: any, seller: VendedorRow): Promise<{ error: string } | null> {
   // A RPC `redistribuir_leads` elege os destinatários a partir de VENDEDORES.ativo = true.
   // Neste ponto da requisição o vendedor sendo excluído ainda está ativo — o delete do usuário
@@ -146,7 +145,6 @@ async function redistribuirIgualmente(admin: any, supabase: any, seller: Vendedo
   return null;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- clientes Supabase tipados via genéricos do SDK, sem schema local aqui.
 async function redistribuirParaVendedor(admin: any, seller: VendedorRow, destinoNome: string): Promise<{ error: string } | null> {
   let destinoQuery = admin
     .from('VENDEDORES')
