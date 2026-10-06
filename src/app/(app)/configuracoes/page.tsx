@@ -4,8 +4,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import type { Cargo, Etiqueta, PipelineEtapa, Profile, Vendedor } from '@/types/database';
 import { Avatar } from '@/components/Avatar';
+import { ExcluirVendedorModal } from '@/components/ExcluirVendedorModal';
 import { usePipelineEtapas } from '@/hooks/usePipelineEtapas';
 import { etapaProtegida, normalizarSlug } from '@/lib/pipeline-etapas';
+import { listarDestinosRedistribuicao } from '@/lib/vendedores/redistribuicao';
 
 type Tab = 'novo-usuario' | 'usuarios' | 'etiquetas' | 'etapas' | 'fila' | 'credenciais' | 'aparencia';
 
@@ -450,6 +452,9 @@ function GerenciarUsuariosTab() {
   const [acaoEmAndamento, setAcaoEmAndamento] = useState<string | null>(null);
   const [mensagemErro, setMensagemErro] = useState<string | null>(null);
   const [linkReset, setLinkReset] = useState<{ email: string; link: string } | null>(null);
+  const [modalExclusao, setModalExclusao] = useState<{ id: string; nome: string; email: string } | null>(null);
+  const [destinosExclusao, setDestinosExclusao] = useState<{ id: string | number; nome: string }[]>([]);
+  const [carregandoDestinos, setCarregandoDestinos] = useState(false);
 
   useEffect(() => {
     async function fetchProfiles() {
@@ -496,18 +501,16 @@ function GerenciarUsuariosTab() {
     setProfiles((prev) => prev.map((p) => (p.id === id ? { ...p, desativado: desativarAgora } : p)));
   }
 
-  async function excluirUsuario(id: string, nome: string | null, email: string) {
-    const acao = 'Excluir usuário';
-    const confirmado = window.confirm(
-      `${acao} ${nome ?? email}? Esta ação é permanente e apagará o acesso e os dados de usuário.`
-    );
-    if (!confirmado) return;
-
+  async function excluirUsuario(id: string, nome: string | null, email: string, redistribuirPara: string | null) {
     setAcaoEmAndamento(`delete-${id}`);
     setMensagemErro(null);
 
     try {
-      const response = await fetch(`/api/users/${id}`, { method: 'DELETE' });
+      const response = await fetch(`/api/users/${id}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ redistribuirPara }),
+      });
       const data = (await response.json().catch(() => ({}))) as { error?: string };
 
       if (!response.ok) {
@@ -516,10 +519,36 @@ function GerenciarUsuariosTab() {
       }
 
       setProfiles((prev) => prev.filter((p) => p.id !== id));
+      setModalExclusao(null);
     } catch {
       setMensagemErro('Falha de conexão ao excluir usuário. Tente novamente.');
     } finally {
       setAcaoEmAndamento(null);
+    }
+  }
+
+  async function iniciarExclusao(p: Profile) {
+    if (p.cargo !== 'vendedor') {
+      // Cargos que não vendem não têm leads atribuídos por nome; não há o que redistribuir.
+      const confirmado = window.confirm(
+        `Excluir usuário ${p.nome ?? p.email}? Esta ação é permanente e apagará o acesso e os dados de usuário.`
+      );
+      if (!confirmado) return;
+      await excluirUsuario(p.id, p.nome, p.email, null);
+      return;
+    }
+
+    setCarregandoDestinos(true);
+    setMensagemErro(null);
+
+    try {
+      const destinos = await listarDestinosRedistribuicao(createClient(), p.nome ?? '');
+      setDestinosExclusao(destinos);
+      setModalExclusao({ id: p.id, nome: p.nome ?? p.email, email: p.email });
+    } catch {
+      setMensagemErro('Erro ao carregar vendedores para redistribuição.');
+    } finally {
+      setCarregandoDestinos(false);
     }
   }
 
@@ -613,11 +642,17 @@ function GerenciarUsuariosTab() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => excluirUsuario(p.id, p.nome, p.email)}
-                    disabled={acaoEmAndamento === `delete-${p.id}` || p.cargo === 'admin_master'}
+                    onClick={() => void iniciarExclusao(p)}
+                    disabled={
+                      acaoEmAndamento === `delete-${p.id}` || carregandoDestinos || p.cargo === 'admin_master'
+                    }
                     className="rounded-lg border border-red-500 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-60"
                   >
-                    {acaoEmAndamento === `delete-${p.id}` ? 'Excluindo...' : 'Excluir'}
+                    {acaoEmAndamento === `delete-${p.id}`
+                      ? 'Excluindo...'
+                      : carregandoDestinos
+                        ? 'Carregando...'
+                        : 'Excluir usuário'}
                   </button>
                 </td>
               </tr>
@@ -663,6 +698,18 @@ function GerenciarUsuariosTab() {
             </button>
           </div>
         </div>
+      )}
+
+      {modalExclusao && (
+        <ExcluirVendedorModal
+          vendedorNome={modalExclusao.nome}
+          destinos={destinosExclusao}
+          loading={acaoEmAndamento === `delete-${modalExclusao.id}`}
+          onCancel={() => setModalExclusao(null)}
+          onConfirm={(redistribuirPara) =>
+            void excluirUsuario(modalExclusao.id, modalExclusao.nome, modalExclusao.email, redistribuirPara)
+          }
+        />
       )}
     </div>
   );

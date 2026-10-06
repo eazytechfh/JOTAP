@@ -6,6 +6,7 @@ import {
   EXPEDIENTE_OPTIONS,
   PERIODO_OPTIONS,
   SEM_VENDEDOR_FILTER_VALUE,
+  VENDEDOR_STATUS_OPTIONS,
   type LeadFiltersState,
 } from '@/hooks/useLeadFilters';
 import { DATA_REFERENCIA_OPTIONS } from '@/lib/lead-period-filter';
@@ -48,19 +49,32 @@ export function LeadFiltersBar({ filters, showDataReference = false }: LeadFilte
         ))}
       </select>
 
-      <select
-        value={filters.vendedorFiltro}
-        onChange={(e) => filters.setVendedorFiltro(e.target.value)}
-        className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
-      >
-        <option value="todos">Todos os vendedores</option>
-        <option value={SEM_VENDEDOR_FILTER_VALUE}>Sem vendedor</option>
-        {filters.vendedoresDisponiveis.map((vendedor) => (
-          <option key={vendedor} value={vendedor}>
-            {vendedor}
-          </option>
-        ))}
-      </select>
+      {/* Filtro de status do vendedor: Todos / Ativos / Inativos */}
+      {/* w-56 shrink-0: largura fixa para evitar reflow quando os pills mudam de tamanho */}
+      <div className="flex w-56 shrink-0 flex-col gap-1">
+        <span className="text-xs font-medium text-gray-500">Vendedor</span>
+        <PillFilter
+          options={VENDEDOR_STATUS_OPTIONS}
+          selected={filters.vendedorStatusFiltro}
+          onChange={(status) => {
+            filters.setVendedorStatusFiltro(status);
+            filters.setVendedorFiltro('todos');
+          }}
+        />
+        <select
+          value={filters.vendedorFiltro}
+          onChange={(e) => filters.setVendedorFiltro(e.target.value)}
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+        >
+          <option value="todos">Todos</option>
+          <option value={SEM_VENDEDOR_FILTER_VALUE}>Sem vendedor</option>
+          {filters.vendedoresDisponiveis.map((vendedor) => (
+            <option key={vendedor} value={vendedor}>
+              {vendedor}
+            </option>
+          ))}
+        </select>
+      </div>
 
       <select
         value={filters.veiculoFiltro}
