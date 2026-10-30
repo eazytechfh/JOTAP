@@ -10,7 +10,8 @@
     "start": "next start",
     "lint": "next lint",
     "setup:sql": "node scripts/setup-sql.js",
-    "setup:admin": "node scripts/create-admin.js"
+    "setup:admin": "node scripts/create-admin.js",
+    "ghl:analise": "node scripts/ghl-analise-conversas.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.1.0",
